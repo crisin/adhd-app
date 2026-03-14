@@ -167,21 +167,47 @@ export function AddTaskScreen() {
           )}
         </View>
 
-        {/* AI loading / status */}
-        {ai.isLoading && (
-          <View style={styles.aiStatus}>
-            <View style={styles.aiProgressBar}>
-              <View style={[styles.aiProgressFill, { width: `${Math.round(ai.loadProgress * 100)}%` }]} />
+        {/* AI status panel — always visible when AI is doing something */}
+        {Platform.OS === 'web' && (ai.isLoading || ai.isGenerating || ai.status === 'error' || aiError) && (
+          <View style={styles.aiPanel}>
+            {/* Status dot + message */}
+            <View style={styles.aiPanelHeader}>
+              <View style={[
+                styles.aiDot,
+                ai.isLoading && styles.aiDotLoading,
+                ai.isGenerating && styles.aiDotGenerating,
+                (ai.status === 'error' || aiError) && styles.aiDotError,
+              ]} />
+              <Text style={styles.aiPanelMessage} numberOfLines={2}>
+                {aiError ?? ai.statusMessage}
+              </Text>
             </View>
-            <Text style={styles.aiStatusText}>
-              Loading AI model... {Math.round(ai.loadProgress * 100)}%
-            </Text>
-          </View>
-        )}
 
-        {aiError && (
-          <View style={styles.aiErrorBox}>
-            <Text style={styles.aiErrorText}>{aiError}</Text>
+            {/* Progress bar for loading */}
+            {ai.isLoading && (
+              <View style={styles.aiProgressBar}>
+                <View style={[styles.aiProgressFill, { width: `${Math.round(ai.loadProgress * 100)}%` }]} />
+              </View>
+            )}
+
+            {/* Token counter + live preview during generation */}
+            {ai.isGenerating && (
+              <>
+                <View style={styles.aiTokenRow}>
+                  <ActivityIndicator size="small" color="#7C3AED" />
+                  <Text style={styles.aiTokenCount}>
+                    {ai.tokensGenerated} tokens generated
+                  </Text>
+                </View>
+                {ai.partialOutput ? (
+                  <View style={styles.aiPreviewBox}>
+                    <Text style={styles.aiPreviewText} numberOfLines={4}>
+                      {ai.partialOutput}
+                    </Text>
+                  </View>
+                ) : null}
+              </>
+            )}
           </View>
         )}
 
@@ -359,24 +385,64 @@ const styles = StyleSheet.create({
   aiBtnDisabled: { opacity: 0.35 },
   aiBtnActive: { backgroundColor: '#6D28D9' },
   aiBtnText: { fontSize: 15, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
-  // AI status
-  aiStatus: { marginBottom: spacing.md },
+  // AI status panel
+  aiPanel: {
+    backgroundColor: '#F5F3FF',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+    padding: spacing.sm,
+    marginBottom: spacing.lg,
+    gap: spacing.xs,
+  },
+  aiPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  aiDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.textMuted,
+  },
+  aiDotLoading: { backgroundColor: '#7C3AED' },
+  aiDotGenerating: { backgroundColor: '#F59E0B' },
+  aiDotError: { backgroundColor: colors.danger },
+  aiPanelMessage: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4C1D95',
+  },
   aiProgressBar: {
     height: 4,
-    backgroundColor: colors.border,
+    backgroundColor: '#DDD6FE',
     borderRadius: 2,
     overflow: 'hidden',
-    marginBottom: spacing.xs,
   },
   aiProgressFill: { height: '100%', backgroundColor: '#7C3AED', borderRadius: 2 },
-  aiStatusText: { fontSize: 12, color: colors.textMuted },
-  aiErrorBox: {
-    backgroundColor: '#FEE2E2',
-    borderRadius: radius.md,
-    padding: spacing.sm,
-    marginBottom: spacing.md,
+  aiTokenRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
-  aiErrorText: { fontSize: 13, color: '#991B1B' },
+  aiTokenCount: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6D28D9',
+  },
+  aiPreviewBox: {
+    backgroundColor: '#EDE9FE',
+    borderRadius: radius.sm,
+    padding: spacing.xs,
+  },
+  aiPreviewText: {
+    fontSize: 11,
+    fontFamily: 'monospace',
+    color: '#4C1D95',
+    lineHeight: 16,
+  },
   // Subtasks
   subtasksSection: { marginBottom: spacing.lg },
   subtaskRow: {

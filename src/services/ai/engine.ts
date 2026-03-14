@@ -5,7 +5,7 @@
 import { AIEngine, AIEngineState, DecomposedTask } from './types';
 
 class NativeAIEngine implements AIEngine {
-  private state: AIEngineState = { status: 'error', loadProgress: 0, error: 'Local AI not yet available on native. Use the web app for AI features.' };
+  private state: AIEngineState = { status: 'error', loadProgress: 0, error: 'Local AI not yet available on native. Use the web app for AI features.', statusMessage: 'Not available on native', tokensGenerated: 0, partialOutput: '' };
   private listeners = new Set<(state: AIEngineState) => void>();
 
   getState(): AIEngineState {

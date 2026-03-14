@@ -14,6 +14,9 @@ export interface AIEngineState {
   status: AIStatus;
   loadProgress: number;
   error: string | null;
+  statusMessage: string;
+  tokensGenerated: number;
+  partialOutput: string;
 }
 
 export interface AIEngine {

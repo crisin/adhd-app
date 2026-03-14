@@ -5,9 +5,24 @@ import { AIEngine, AIEngineState, DecomposedTask, SYSTEM_PROMPT, TASK_CATEGORIES
 const MODEL_REPO = 'Qwen/Qwen2.5-3B-Instruct-GGUF';
 const MODEL_FILE = 'qwen2.5-3b-instruct-q4_k_m.gguf';
 
+const INITIAL_STATE: AIEngineState = {
+  status: 'idle',
+  loadProgress: 0,
+  error: null,
+  statusMessage: 'AI ready to load',
+  tokensGenerated: 0,
+  partialOutput: '',
+};
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
 class WllamaEngine implements AIEngine {
   private wllama: any = null;
-  private state: AIEngineState = { status: 'idle', loadProgress: 0, error: null };
+  private state: AIEngineState = { ...INITIAL_STATE };
   private listeners = new Set<(state: AIEngineState) => void>();
 
   getState(): AIEngineState {
@@ -31,37 +46,51 @@ class WllamaEngine implements AIEngine {
   async init(): Promise<void> {
     if (this.state.status === 'ready' || this.state.status === 'loading') return;
 
-    this.setState({ status: 'loading', loadProgress: 0, error: null });
+    this.setState({ status: 'loading', loadProgress: 0, error: null, statusMessage: 'Initializing WASM runtime...' });
 
     try {
-      // WASM files are served as static assets from /public/wllama/
       const wasmPaths = {
         'single-thread/wllama.wasm': '/wllama/single-thread.wasm',
         'multi-thread/wllama.wasm': '/wllama/multi-thread.wasm',
       };
+
+      this.setState({ statusMessage: 'Loading WebAssembly engine...' });
 
       this.wllama = new Wllama(wasmPaths, {
         allowOffline: true,
         suppressNativeLog: true,
       });
 
+      const nThreads = navigator.hardwareConcurrency
+        ? Math.min(navigator.hardwareConcurrency, 4)
+        : 2;
+
+      this.setState({ statusMessage: `Downloading model (Qwen 2.5 3B)...`, loadProgress: 0.01 });
+
       await this.wllama.loadModelFromHF(MODEL_REPO, MODEL_FILE, {
         n_ctx: 2048,
-        n_threads: navigator.hardwareConcurrency
-          ? Math.min(navigator.hardwareConcurrency, 4)
-          : 2,
+        n_threads: nThreads,
         progressCallback: ({ loaded, total }: { loaded: number; total: number }) => {
           if (total > 0) {
-            this.setState({ loadProgress: loaded / total });
+            const pct = loaded / total;
+            this.setState({
+              loadProgress: pct,
+              statusMessage: `Downloading model... ${formatBytes(loaded)} / ${formatBytes(total)} (${Math.round(pct * 100)}%)`,
+            });
           }
         },
       });
 
-      this.setState({ status: 'ready', loadProgress: 1 });
+      this.setState({
+        status: 'ready',
+        loadProgress: 1,
+        statusMessage: `Model loaded (${nThreads} threads)`,
+      });
     } catch (err: any) {
       this.setState({
         status: 'error',
         error: err?.message ?? 'Failed to load AI model',
+        statusMessage: `Error: ${err?.message ?? 'Unknown error'}`,
       });
       throw err;
     }
@@ -70,11 +99,19 @@ class WllamaEngine implements AIEngine {
   async decomposeIdea(text: string): Promise<DecomposedTask> {
     if (!this.wllama) throw new Error('AI engine not initialized');
 
-    this.setState({ status: 'generating' });
+    this.setState({
+      status: 'generating',
+      statusMessage: 'Preparing prompt...',
+      tokensGenerated: 0,
+      partialOutput: '',
+    });
 
     try {
-      // Build JSON grammar to constrain output
       const grammar = buildJsonGrammar();
+      let tokenCount = 0;
+      const startTime = Date.now();
+
+      this.setState({ statusMessage: 'Thinking...' });
 
       const result = await this.wllama.createChatCompletion(
         [
@@ -89,16 +126,37 @@ class WllamaEngine implements AIEngine {
             grammar,
           },
           useCache: false,
+          onNewToken: (_token: number, _piece: Uint8Array, currentText: string) => {
+            tokenCount++;
+            const elapsed = (Date.now() - startTime) / 1000;
+            const tokPerSec = elapsed > 0 ? (tokenCount / elapsed).toFixed(1) : '...';
+            this.setState({
+              tokensGenerated: tokenCount,
+              partialOutput: currentText,
+              statusMessage: `Generating... ${tokenCount} tokens (${tokPerSec} tok/s)`,
+            });
+          },
         }
       );
 
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       const parsed = JSON.parse(result);
       const sanitized = this.sanitize(parsed);
+      const subtaskCount = sanitized.subtasks.length;
 
-      this.setState({ status: 'ready' });
+      this.setState({
+        status: 'ready',
+        statusMessage: `Done! ${tokenCount} tokens in ${elapsed}s \u2014 ${sanitized.title} + ${subtaskCount} subtask${subtaskCount !== 1 ? 's' : ''}`,
+        tokensGenerated: tokenCount,
+        partialOutput: '',
+      });
+
       return sanitized;
     } catch (err: any) {
-      this.setState({ status: 'ready' });
+      this.setState({
+        status: 'ready',
+        statusMessage: `Generation failed: ${err?.message}`,
+      });
       throw new Error(`AI generation failed: ${err?.message}`);
     }
   }
@@ -124,7 +182,6 @@ class WllamaEngine implements AIEngine {
 
 /**
  * GBNF grammar that constrains output to our exact JSON schema.
- * This ensures the model always produces valid, parseable JSON.
  */
 function buildJsonGrammar(): string {
   return String.raw`
