@@ -1,3 +1,4 @@
+import { Wllama } from '@wllama/wllama/esm';
 import { AIEngine, AIEngineState, DecomposedTask, SYSTEM_PROMPT, TASK_CATEGORIES } from './types';
 
 // Qwen 2.5 3B Instruct Q4_K_M — good structured output, ~2 GB download
@@ -33,8 +34,6 @@ class WllamaEngine implements AIEngine {
     this.setState({ status: 'loading', loadProgress: 0, error: null });
 
     try {
-      const { Wllama } = await import('@wllama/wllama');
-
       // WASM files are served as static assets from /public/wllama/
       const wasmPaths = {
         'single-thread/wllama.wasm': '/wllama/single-thread.wasm',
