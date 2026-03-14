@@ -33,14 +33,14 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          cat <<'EOF' > ~/.ssh/config
-          Host weiber.tunnel
-            HostName ssh.rousseau-lab.de
-            User weiber
-            IdentityFile ~/.ssh/id_ed25519
-            ProxyCommand cloudflared access ssh --hostname %h
-            StrictHostKeyChecking no
-          EOF
+          printf '%s\n' \
+            "Host weiber.tunnel" \
+            "  HostName ssh.rousseau-lab.de" \
+            "  User weiber" \
+            "  IdentityFile ~/.ssh/id_ed25519" \
+            "  ProxyCommand cloudflared access ssh --hostname %h" \
+            "  StrictHostKeyChecking no" \
+            > ~/.ssh/config
           chmod 600 ~/.ssh/config
 
       - name: Deploy via SSH
