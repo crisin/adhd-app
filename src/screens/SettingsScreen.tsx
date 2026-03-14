@@ -204,7 +204,7 @@ function AISection() {
         </View>
       )}
       <Text style={styles.aiHint}>
-        Model runs 100% on-device. First download is ~1.5 GB, then cached for offline use.
+        Runs 100% in your browser via WebAssembly. First download is ~2 GB, then cached for offline use.
       </Text>
     </View>
   );

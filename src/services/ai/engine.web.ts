@@ -1,10 +1,11 @@
-import { AIEngine, AIEngineState, AIStatus, DecomposedTask, SYSTEM_PROMPT, TASK_CATEGORIES } from './types';
+import { AIEngine, AIEngineState, DecomposedTask, SYSTEM_PROMPT, TASK_CATEGORIES } from './types';
 
-// Model ID for WebLLM — Qwen 2.5 3B is the sweet spot for structured output quality
-const MODEL_ID = 'Qwen2.5-3B-Instruct-q4f16_1-MLC';
+// Qwen 2.5 3B Instruct Q4_K_M — good structured output, ~2 GB download
+const MODEL_REPO = 'Qwen/Qwen2.5-3B-Instruct-GGUF';
+const MODEL_FILE = 'qwen2.5-3b-instruct-q4_k_m.gguf';
 
-class WebAIEngine implements AIEngine {
-  private engine: any = null;
+class WllamaEngine implements AIEngine {
+  private wllama: any = null;
   private state: AIEngineState = { status: 'idle', loadProgress: 0, error: null };
   private listeners = new Set<(state: AIEngineState) => void>();
 
@@ -32,12 +33,28 @@ class WebAIEngine implements AIEngine {
     this.setState({ status: 'loading', loadProgress: 0, error: null });
 
     try {
-      const webllm = await import('@mlc-ai/web-llm');
+      const { Wllama } = await import('@wllama/wllama');
 
-      this.engine = await webllm.CreateMLCEngine(MODEL_ID, {
-        initProgressCallback: (progress: any) => {
-          // progress.progress is 0-1
-          this.setState({ loadProgress: progress.progress ?? 0 });
+      // WASM files are served as static assets from /public/wllama/
+      const wasmPaths = {
+        'single-thread/wllama.wasm': '/wllama/single-thread.wasm',
+        'multi-thread/wllama.wasm': '/wllama/multi-thread.wasm',
+      };
+
+      this.wllama = new Wllama(wasmPaths, {
+        allowOffline: true,
+        suppressNativeLog: true,
+      });
+
+      await this.wllama.loadModelFromHF(MODEL_REPO, MODEL_FILE, {
+        n_ctx: 2048,
+        n_threads: navigator.hardwareConcurrency
+          ? Math.min(navigator.hardwareConcurrency, 4)
+          : 2,
+        progressCallback: ({ loaded, total }: { loaded: number; total: number }) => {
+          if (total > 0) {
+            this.setState({ loadProgress: loaded / total });
+          }
         },
       });
 
@@ -52,31 +69,37 @@ class WebAIEngine implements AIEngine {
   }
 
   async decomposeIdea(text: string): Promise<DecomposedTask> {
-    if (!this.engine) throw new Error('AI engine not initialized');
+    if (!this.wllama) throw new Error('AI engine not initialized');
 
     this.setState({ status: 'generating' });
 
     try {
-      const response = await this.engine.chat.completions.create({
-        messages: [
+      // Build JSON grammar to constrain output
+      const grammar = buildJsonGrammar();
+
+      const result = await this.wllama.createChatCompletion(
+        [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: text },
         ],
-        temperature: 0.3,
-        max_tokens: 1024,
-        response_format: { type: 'json_object' },
-      });
+        {
+          nPredict: 1024,
+          sampling: {
+            temp: 0.3,
+            top_p: 0.9,
+            grammar,
+          },
+          useCache: false,
+        }
+      );
 
-      const content = response.choices[0]?.message?.content ?? '';
-      const parsed = JSON.parse(content);
-
-      // Validate and sanitize the response
-      const result = this.sanitize(parsed);
+      const parsed = JSON.parse(result);
+      const sanitized = this.sanitize(parsed);
 
       this.setState({ status: 'ready' });
-      return result;
+      return sanitized;
     } catch (err: any) {
-      this.setState({ status: 'ready' }); // back to ready, not error — model is still loaded
+      this.setState({ status: 'ready' });
       throw new Error(`AI generation failed: ${err?.message}`);
     }
   }
@@ -100,6 +123,22 @@ class WebAIEngine implements AIEngine {
   }
 }
 
+/**
+ * GBNF grammar that constrains output to our exact JSON schema.
+ * This ensures the model always produces valid, parseable JSON.
+ */
+function buildJsonGrammar(): string {
+  return String.raw`
+root ::= "{" ws "\"title\"" ws ":" ws string "," ws "\"category\"" ws ":" ws category "," ws "\"priority\"" ws ":" ws priority "," ws "\"estimatedMinutes\"" ws ":" ws number "," ws "\"subtasks\"" ws ":" ws "[" ws subtask ("," ws subtask)* ws "]" ws "}"
+category ::= "\"private\"" | "\"school\"" | "\"work\"" | "\"health\"" | "\"finance\"" | "\"other\""
+priority ::= "\"high\"" | "\"medium\"" | "\"low\""
+subtask ::= "{" ws "\"title\"" ws ":" ws string "," ws "\"estimatedMinutes\"" ws ":" ws number ws "}"
+string ::= "\"" ([^"\\] | "\\" .)* "\""
+number ::= [0-9]+
+ws ::= [ \t\n]*
+`.trim();
+}
+
 export function createEngine(): AIEngine {
-  return new WebAIEngine();
+  return new WllamaEngine();
 }
