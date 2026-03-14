@@ -1,16 +1,43 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Share, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Share,
+  ScrollView,
+  TextInput,
+  Modal,
+  Pressable,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useDatabase } from '@nozbe/watermelondb/react';
 import { Q } from '@nozbe/watermelondb';
-import { useSettingsStore } from '../store/useSettingsStore';
+import * as Haptics from 'expo-haptics';
+import {
+  useSettingsStore,
+  CalendarSourceKey,
+  DEFAULT_CALENDAR_COLORS,
+  CALENDAR_SOURCE_LABELS,
+  CALENDAR_SOURCE_ICONS,
+} from '../store/useSettingsStore';
 import { colors, spacing, radius } from '../theme/tokens';
 import { Task } from '../db/models/Task';
 
-// TODO(phase2): sound — add sound preference settings here
-
 const WORK_OPTIONS = [10, 15, 20, 25, 30, 45, 60] as const;
 const WARNING_OPTIONS = [1, 2, 3, 5] as const;
+
+const ALL_SOURCES: CalendarSourceKey[] = ['manual', 'task-due', 'plant-reminder', 'device'];
+
+// Curated palette for quick picking
+const COLOR_PALETTE = [
+  '#5A9A52', '#2E8B57', '#10B981', '#059669',
+  '#3B82F6', '#6366F1', '#8B5CF6', '#A855F7',
+  '#C9960A', '#D97706', '#F59E0B', '#EAB308',
+  '#DC2626', '#E05C5C', '#F43F5E', '#EC4899',
+  '#6B8C69', '#94A3B8', '#64748B', '#475569',
+];
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -22,12 +49,10 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 function Chip({
-  value,
   label,
   active,
   onPress,
 }: {
-  value: number;
   label: string;
   active: boolean;
   onPress: () => void;
@@ -43,9 +68,104 @@ function Chip({
   );
 }
 
+// ─── Color Picker Modal ───────────────────────────────────────────────────────
+
+function ColorPickerModal({
+  visible,
+  currentColor,
+  sourceLabel,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  currentColor: string;
+  sourceLabel: string;
+  onSelect: (color: string) => void;
+  onClose: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const [customHex, setCustomHex] = useState('');
+
+  const handleSelect = (color: string) => {
+    Haptics.selectionAsync();
+    onSelect(color);
+    onClose();
+  };
+
+  const handleCustom = () => {
+    const hex = customHex.trim();
+    if (/^#[0-9A-Fa-f]{6}$/.test(hex)) {
+      handleSelect(hex);
+      setCustomHex('');
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalScrim} onPress={onClose}>
+        <Pressable onPress={() => {}}>
+          <View style={[styles.modalSheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Choose Color</Text>
+            <Text style={styles.modalSubtitle}>{sourceLabel}</Text>
+
+            {/* Current color preview */}
+            <View style={styles.currentColorRow}>
+              <View style={[styles.colorPreviewLg, { backgroundColor: currentColor }]} />
+              <Text style={styles.currentColorHex}>{currentColor}</Text>
+            </View>
+
+            {/* Palette grid */}
+            <View style={styles.paletteGrid}>
+              {COLOR_PALETTE.map((color) => (
+                <TouchableOpacity
+                  key={color}
+                  style={[
+                    styles.paletteItem,
+                    { backgroundColor: color },
+                    currentColor === color && styles.paletteItemActive,
+                  ]}
+                  onPress={() => handleSelect(color)}
+                />
+              ))}
+            </View>
+
+            {/* Custom hex input */}
+            <View style={styles.customColorRow}>
+              <TextInput
+                style={styles.customColorInput}
+                placeholder="#FF5733"
+                placeholderTextColor={colors.textMuted}
+                value={customHex}
+                onChangeText={setCustomHex}
+                maxLength={7}
+                autoCapitalize="characters"
+              />
+              <TouchableOpacity
+                style={[styles.customColorBtn, !/^#[0-9A-Fa-f]{6}$/.test(customHex.trim()) && styles.customColorBtnDisabled]}
+                onPress={handleCustom}
+                disabled={!/^#[0-9A-Fa-f]{6}$/.test(customHex.trim())}
+              >
+                <Text style={styles.customColorBtnText}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ─── Settings Screen ──────────────────────────────────────────────────────────
+
 export function SettingsScreen() {
-  const { workDuration, transitionWarning, setWorkDuration, setTransitionWarning } = useSettingsStore();
+  const {
+    workDuration, transitionWarning, calendarColors,
+    setWorkDuration, setTransitionWarning, setCalendarColor, resetCalendarColors,
+  } = useSettingsStore();
   const db = useDatabase();
+
+  const [editingSource, setEditingSource] = useState<CalendarSourceKey | null>(null);
 
   const handleExport = async () => {
     try {
@@ -55,71 +175,131 @@ export function SettingsScreen() {
         title: t.title,
         notes: t.notes,
         status: t.status,
+        priority: t.priority,
         estimatedMinutes: t.estimatedMinutes,
         actualMinutes: t.actualMinutes,
         createdAt: t.createdAt,
         completedAt: t.completedAt,
       }));
       await Share.share({ message: JSON.stringify(data, null, 2) });
-    } catch (e) {
-      Alert.alert('Export failed', 'Could not export data.');
+    } catch (_e) {
+      // Share cancelled or failed silently
     }
   };
 
   return (
     <SafeAreaView style={styles.root}>
-      <View style={styles.header}>
-        <Text style={styles.heading}>Settings</Text>
-      </View>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <Text style={styles.heading}>Settings</Text>
+        </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Timer defaults</Text>
+        {/* Timer defaults */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Timer defaults</Text>
 
-        <Row label="Work duration">
-          <View style={styles.chipRow}>
-            {WORK_OPTIONS.map((min) => (
-              <Chip
-                key={min}
-                value={min}
-                label={`${min}m`}
-                active={workDuration === min}
-                onPress={() => setWorkDuration(min)}
-              />
-            ))}
+          <Row label="Work duration">
+            <View style={styles.chipRow}>
+              {WORK_OPTIONS.map((min) => (
+                <Chip
+                  key={min}
+                  label={`${min}m`}
+                  active={workDuration === min}
+                  onPress={() => setWorkDuration(min)}
+                />
+              ))}
+            </View>
+          </Row>
+
+          <Row label="Transition warning">
+            <View style={styles.chipRow}>
+              {WARNING_OPTIONS.map((min) => (
+                <Chip
+                  key={min}
+                  label={`${min}m`}
+                  active={transitionWarning === min}
+                  onPress={() => setTransitionWarning(min)}
+                />
+              ))}
+            </View>
+          </Row>
+        </View>
+
+        {/* Calendar Colors */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>Calendar colors</Text>
+            <TouchableOpacity
+              onPress={() => {
+                resetCalendarColors();
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }}
+            >
+              <Text style={styles.resetText}>Reset</Text>
+            </TouchableOpacity>
           </View>
-        </Row>
 
-        <Row label="Transition warning">
-          <View style={styles.chipRow}>
-            {WARNING_OPTIONS.map((min) => (
-              <Chip
-                key={min}
-                value={min}
-                label={`${min}m`}
-                active={transitionWarning === min}
-                onPress={() => setTransitionWarning(min)}
-              />
-            ))}
-          </View>
-        </Row>
-      </View>
+          {ALL_SOURCES.map((src) => {
+            const color = calendarColors[src];
+            const isDefault = color === DEFAULT_CALENDAR_COLORS[src];
+            return (
+              <TouchableOpacity
+                key={src}
+                style={styles.colorRow}
+                onPress={() => setEditingSource(src)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.colorRowLeft}>
+                  <View style={[styles.colorSwatch, { backgroundColor: color }]} />
+                  <Ionicons
+                    name={CALENDAR_SOURCE_ICONS[src] as any}
+                    size={18}
+                    color={color}
+                    style={styles.colorRowIcon}
+                  />
+                  <Text style={styles.colorRowLabel}>{CALENDAR_SOURCE_LABELS[src]}</Text>
+                </View>
+                <View style={styles.colorRowRight}>
+                  <Text style={[styles.colorRowHex, !isDefault && { color }]}>{color}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Data</Text>
-        <TouchableOpacity style={styles.exportBtn} onPress={handleExport} activeOpacity={0.8}>
-          <Text style={styles.exportBtnText}>Export tasks as JSON</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Data */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Data</Text>
+          <TouchableOpacity style={styles.exportBtn} onPress={handleExport} activeOpacity={0.8}>
+            <Text style={styles.exportBtnText}>Export tasks as JSON</Text>
+          </TouchableOpacity>
+        </View>
 
-      <View style={styles.footer}>
-        <Text style={styles.version}>tADiHD v1.0 · All data stays on device</Text>
-      </View>
+        <View style={styles.footer}>
+          <Text style={styles.version}>tADiHD v1.0 · All data stays on device</Text>
+        </View>
+      </ScrollView>
+
+      {/* Color picker modal */}
+      {editingSource ? (
+        <ColorPickerModal
+          visible={true}
+          currentColor={calendarColors[editingSource]}
+          sourceLabel={CALENDAR_SOURCE_LABELS[editingSource]}
+          onSelect={(color) => setCalendarColor(editingSource, color)}
+          onClose={() => setEditingSource(null)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
+  scrollContent: { paddingBottom: spacing.xxl },
   header: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
@@ -130,12 +310,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.xl,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
   sectionLabel: {
     fontSize: 12,
     fontWeight: '700',
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
+    marginBottom: spacing.md,
+  },
+  resetText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primaryDark,
     marginBottom: spacing.md,
   },
   row: {
@@ -158,6 +350,24 @@ const styles = StyleSheet.create({
   chipActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
   chipText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
   chipTextActive: { color: colors.primaryDark },
+
+  // Calendar color rows
+  colorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  colorRowLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  colorSwatch: { width: 20, height: 20, borderRadius: 4 },
+  colorRowIcon: { marginLeft: 2 },
+  colorRowLabel: { fontSize: 15, fontWeight: '500', color: colors.text },
+  colorRowRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  colorRowHex: { fontSize: 13, fontWeight: '500', color: colors.textMuted, fontFamily: 'monospace' },
+
   exportBtn: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,
@@ -168,11 +378,68 @@ const styles = StyleSheet.create({
   },
   exportBtnText: { fontSize: 15, fontWeight: '600', color: colors.text },
   footer: {
-    position: 'absolute',
-    bottom: spacing.xl,
-    left: 0,
-    right: 0,
     alignItems: 'center',
+    paddingVertical: spacing.xl,
   },
   version: { fontSize: 12, color: colors.textMuted },
+
+  // Color picker modal
+  modalScrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  modalSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  modalHandle: { width: 40, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: spacing.md },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: colors.text },
+  modalSubtitle: { fontSize: 14, color: colors.textMuted, marginBottom: spacing.md },
+  currentColorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  colorPreviewLg: { width: 40, height: 40, borderRadius: radius.md },
+  currentColorHex: { fontSize: 16, fontWeight: '700', color: colors.text, fontFamily: 'monospace' },
+  paletteGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  paletteItem: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+  },
+  paletteItemActive: {
+    borderWidth: 3,
+    borderColor: colors.text,
+  },
+  customColorRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  customColorInput: {
+    flex: 1,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    fontFamily: 'monospace',
+  },
+  customColorBtn: {
+    backgroundColor: colors.primaryDark,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    justifyContent: 'center',
+  },
+  customColorBtnDisabled: { opacity: 0.4 },
+  customColorBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 });

@@ -15,7 +15,13 @@ import * as Haptics from 'expo-haptics';
 import { colors, spacing, radius, typography } from '../theme/tokens';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
 import { CalendarEvent } from '../db/models/CalendarEvent';
-import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../db/actions';
+import { createCalendarEvent, deleteCalendarEvent } from '../db/actions';
+import {
+  useSettingsStore,
+  CalendarSourceKey,
+  CALENDAR_SOURCE_LABELS,
+  CALENDAR_SOURCE_ICONS,
+} from '../store/useSettingsStore';
 
 type ViewMode = 'month' | 'week' | 'day';
 
@@ -24,6 +30,8 @@ const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
+
+const ALL_SOURCES: CalendarSourceKey[] = ['manual', 'task-due', 'plant-reminder', 'device'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,7 +45,7 @@ function endOfMonth(d: Date): Date {
 
 function startOfWeek(d: Date): Date {
   const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday start
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   const start = new Date(d);
   start.setDate(diff);
   start.setHours(0, 0, 0, 0);
@@ -68,7 +76,7 @@ function formatTime(ms: number): string {
 function getMonthGrid(year: number, month: number): (Date | null)[] {
   const first = new Date(year, month, 1);
   const dayOfWeek = first.getDay();
-  const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Monday-based
+  const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const cells: (Date | null)[] = [];
   for (let i = 0; i < offset; i++) cells.push(null);
@@ -77,44 +85,44 @@ function getMonthGrid(year: number, month: number): (Date | null)[] {
   return cells;
 }
 
-// ─── Source badge colors ──────────────────────────────────────────────────────
+function sourceColor(source: string, calendarColors: Record<CalendarSourceKey, string>): string {
+  return calendarColors[source as CalendarSourceKey] ?? colors.primaryDark;
+}
 
-const SOURCE_COLORS: Record<string, string> = {
-  manual: colors.primaryDark,
-  'task-due': colors.accentDark,
-  'plant-reminder': '#2E8B57',
-  device: colors.textMuted,
-};
+function sourceLabel(source: string): string {
+  return CALENDAR_SOURCE_LABELS[source as CalendarSourceKey] ?? source;
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CalendarScreen() {
   const insets = useSafeAreaInsets();
+  const calendarColors = useSettingsStore((s) => s.calendarColors);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [focusDate, setFocusDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [activeFilters, setActiveFilters] = useState<Set<CalendarSourceKey>>(new Set(ALL_SOURCES));
 
-  // Compute range for event query
   const { rangeStart, rangeEnd } = useMemo(() => {
     if (viewMode === 'month') {
-      // Fetch full month + buffer for grid overflow
-      const ms = startOfMonth(focusDate);
-      const me = endOfMonth(focusDate);
-      return { rangeStart: ms.getTime(), rangeEnd: me.getTime() };
+      return { rangeStart: startOfMonth(focusDate).getTime(), rangeEnd: endOfMonth(focusDate).getTime() };
     }
     if (viewMode === 'week') {
       return { rangeStart: startOfWeek(focusDate).getTime(), rangeEnd: endOfWeek(focusDate).getTime() };
     }
-    // day
-    const ds = new Date(focusDate);
-    ds.setHours(0, 0, 0, 0);
-    const de = new Date(focusDate);
-    de.setHours(23, 59, 59, 999);
+    const ds = new Date(focusDate); ds.setHours(0, 0, 0, 0);
+    const de = new Date(focusDate); de.setHours(23, 59, 59, 999);
     return { rangeStart: ds.getTime(), rangeEnd: de.getTime() };
   }, [focusDate, viewMode]);
 
-  const events = useCalendarEvents(rangeStart, rangeEnd);
+  const allEvents = useCalendarEvents(rangeStart, rangeEnd);
+
+  // Apply source filters
+  const events = useMemo(
+    () => allEvents.filter((e) => activeFilters.has(e.source as CalendarSourceKey)),
+    [allEvents, activeFilters]
+  );
 
   const eventsForDay = useCallback(
     (date: Date) => events.filter((e) => isSameDay(new Date(e.startAt), date)),
@@ -122,6 +130,21 @@ export function CalendarScreen() {
   );
 
   const today = new Date();
+
+  const toggleFilter = (source: CalendarSourceKey) => {
+    Haptics.selectionAsync();
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(source)) {
+        if (next.size > 1) next.delete(source); // don't allow all off
+      } else {
+        next.add(source);
+      }
+      return next;
+    });
+  };
+
+  const allFiltersActive = activeFilters.size === ALL_SOURCES.length;
 
   const navigatePrev = () => {
     Haptics.selectionAsync();
@@ -155,8 +178,6 @@ export function CalendarScreen() {
       setFocusDate(date);
     }
   };
-
-  // ── Header ──
 
   const headerTitle = viewMode === 'month'
     ? `${MONTHS[focusDate.getMonth()]} ${focusDate.getFullYear()}`
@@ -203,6 +224,46 @@ export function CalendarScreen() {
             ))}
           </View>
         </View>
+
+        {/* ── Source filters ── */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+          <View style={styles.filterRow}>
+            {/* All toggle */}
+            <TouchableOpacity
+              style={[styles.filterChip, allFiltersActive && styles.filterChipAllActive]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setActiveFilters(new Set(ALL_SOURCES));
+              }}
+            >
+              <Text style={[styles.filterChipText, allFiltersActive && styles.filterChipTextAllActive]}>All</Text>
+            </TouchableOpacity>
+
+            {ALL_SOURCES.map((src) => {
+              const active = activeFilters.has(src);
+              const color = calendarColors[src];
+              return (
+                <TouchableOpacity
+                  key={src}
+                  style={[
+                    styles.filterChip,
+                    active && { backgroundColor: color + '22', borderColor: color },
+                  ]}
+                  onPress={() => toggleFilter(src)}
+                >
+                  <Ionicons
+                    name={(CALENDAR_SOURCE_ICONS[src] + (active ? '' : '-outline')) as any}
+                    size={14}
+                    color={active ? color : colors.textMuted}
+                  />
+                  <Text style={[styles.filterChipText, active && { color }]}>
+                    {CALENDAR_SOURCE_LABELS[src]}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
       </View>
 
       {/* ── Content ── */}
@@ -214,6 +275,7 @@ export function CalendarScreen() {
           selectedDate={selectedDate}
           eventsForDay={eventsForDay}
           onDayPress={handleDayPress}
+          calendarColors={calendarColors}
         />
       )}
       {viewMode === 'week' && (
@@ -223,10 +285,16 @@ export function CalendarScreen() {
           selectedDate={selectedDate}
           eventsForDay={eventsForDay}
           onDayPress={handleDayPress}
+          calendarColors={calendarColors}
         />
       )}
       {viewMode === 'day' && (
-        <DayView date={focusDate} events={eventsForDay(focusDate)} onDelete={deleteCalendarEvent} />
+        <DayView
+          date={focusDate}
+          events={eventsForDay(focusDate)}
+          onDelete={deleteCalendarEvent}
+          calendarColors={calendarColors}
+        />
       )}
 
       {/* ── Add Event Modal ── */}
@@ -242,16 +310,16 @@ export function CalendarScreen() {
 // ─── Month View ───────────────────────────────────────────────────────────────
 
 function MonthView({
-  year, month, today, selectedDate, eventsForDay, onDayPress,
+  year, month, today, selectedDate, eventsForDay, onDayPress, calendarColors,
 }: {
   year: number; month: number; today: Date; selectedDate: Date | null;
   eventsForDay: (d: Date) => CalendarEvent[]; onDayPress: (d: Date) => void;
+  calendarColors: Record<CalendarSourceKey, string>;
 }) {
   const grid = useMemo(() => getMonthGrid(year, month), [year, month]);
 
   return (
     <ScrollView style={styles.monthContainer} contentContainerStyle={styles.monthContent}>
-      {/* Weekday headers */}
       <View style={styles.weekdayRow}>
         {WEEKDAYS.map((d) => (
           <View key={d} style={styles.weekdayCell}>
@@ -260,7 +328,6 @@ function MonthView({
         ))}
       </View>
 
-      {/* Day grid */}
       <View style={styles.monthGrid}>
         {grid.map((date, i) => {
           if (!date) return <View key={`empty-${i}`} style={styles.dayCell} />;
@@ -284,7 +351,7 @@ function MonthView({
                   {dayEvents.slice(0, 3).map((e) => (
                     <View
                       key={e.id}
-                      style={[styles.dot, { backgroundColor: SOURCE_COLORS[e.source] ?? colors.primaryDark }]}
+                      style={[styles.dot, { backgroundColor: sourceColor(e.source, calendarColors) }]}
                     />
                   ))}
                   {dayEvents.length > 3 && (
@@ -303,10 +370,11 @@ function MonthView({
 // ─── Week View ────────────────────────────────────────────────────────────────
 
 function WeekView({
-  focusDate, today, selectedDate, eventsForDay, onDayPress,
+  focusDate, today, selectedDate, eventsForDay, onDayPress, calendarColors,
 }: {
   focusDate: Date; today: Date; selectedDate: Date | null;
   eventsForDay: (d: Date) => CalendarEvent[]; onDayPress: (d: Date) => void;
+  calendarColors: Record<CalendarSourceKey, string>;
 }) {
   const weekStart = startOfWeek(focusDate);
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -317,7 +385,7 @@ function WeekView({
 
   return (
     <ScrollView style={styles.weekContainer}>
-      {days.map((date) => {
+      {days.map((date, idx) => {
         const isToday = isSameDay(date, today);
         const dayEvents = eventsForDay(date);
         return (
@@ -329,7 +397,7 @@ function WeekView({
           >
             <View style={styles.weekDayHeader}>
               <Text style={[styles.weekDayName, isToday && styles.weekDayNameToday]}>
-                {WEEKDAYS[days.indexOf(date)]}
+                {WEEKDAYS[idx]}
               </Text>
               <Text style={[styles.weekDayNum, isToday && styles.weekDayNumToday]}>
                 {date.getDate()}
@@ -340,7 +408,8 @@ function WeekView({
                 <Text style={styles.noEventsText}>No events</Text>
               )}
               {dayEvents.map((e) => (
-                <View key={e.id} style={[styles.eventChip, { borderLeftColor: SOURCE_COLORS[e.source] ?? colors.primaryDark }]}>
+                <View key={e.id} style={[styles.eventChip, { borderLeftColor: sourceColor(e.source, calendarColors) }]}>
+                  <View style={[styles.eventChipDot, { backgroundColor: sourceColor(e.source, calendarColors) }]} />
                   <Text style={styles.eventChipTime}>
                     {e.allDay ? 'All day' : formatTime(e.startAt)}
                   </Text>
@@ -357,7 +426,12 @@ function WeekView({
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
-function DayView({ date, events, onDelete }: { date: Date; events: CalendarEvent[]; onDelete: (e: CalendarEvent) => void }) {
+function DayView({
+  date, events, onDelete, calendarColors,
+}: {
+  date: Date; events: CalendarEvent[]; onDelete: (e: CalendarEvent) => void;
+  calendarColors: Record<CalendarSourceKey, string>;
+}) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
@@ -370,10 +444,11 @@ function DayView({ date, events, onDelete }: { date: Date; events: CalendarEvent
       )}
       {events.map((event) => {
         const isExpanded = expandedId === event.id;
+        const evtColor = sourceColor(event.source, calendarColors);
         return (
           <TouchableOpacity
             key={event.id}
-            style={[styles.dayEventCard, { borderLeftColor: SOURCE_COLORS[event.source] ?? colors.primaryDark }]}
+            style={[styles.dayEventCard, { borderLeftColor: evtColor }]}
             onPress={() => setExpandedId(isExpanded ? null : event.id)}
             activeOpacity={0.7}
           >
@@ -382,15 +457,15 @@ function DayView({ date, events, onDelete }: { date: Date; events: CalendarEvent
                 {event.allDay ? 'All day' : formatTime(event.startAt)}
                 {event.endAt && !event.allDay ? ` – ${formatTime(event.endAt)}` : ''}
               </Text>
-              <View style={[styles.sourceBadge, { backgroundColor: SOURCE_COLORS[event.source] ?? colors.primaryDark }]}>
-                <Text style={styles.sourceBadgeText}>{event.source}</Text>
+              <View style={[styles.sourceBadge, { backgroundColor: evtColor }]}>
+                <Text style={styles.sourceBadgeText}>{sourceLabel(event.source)}</Text>
               </View>
             </View>
             <Text style={styles.dayEventTitle}>{event.title}</Text>
-            {event.description && isExpanded && (
+            {event.description && isExpanded ? (
               <Text style={styles.dayEventDesc}>{event.description}</Text>
-            )}
-            {isExpanded && event.source === 'manual' && (
+            ) : null}
+            {isExpanded && event.source === 'manual' ? (
               <TouchableOpacity
                 style={styles.deleteBtn}
                 onPress={() => {
@@ -401,7 +476,7 @@ function DayView({ date, events, onDelete }: { date: Date; events: CalendarEvent
                 <Ionicons name="trash-outline" size={16} color={colors.danger} />
                 <Text style={styles.deleteBtnText}>Delete</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
           </TouchableOpacity>
         );
       })}
@@ -484,7 +559,6 @@ function AddEventModal({
               multiline
             />
 
-            {/* All-day toggle */}
             <TouchableOpacity style={styles.allDayRow} onPress={() => setAllDay(!allDay)}>
               <Text style={styles.allDayLabel}>All day</Text>
               <View style={[styles.toggle, allDay && styles.toggleActive]}>
@@ -492,8 +566,7 @@ function AddEventModal({
               </View>
             </TouchableOpacity>
 
-            {/* Time pickers (simple text input for now) */}
-            {!allDay && (
+            {!allDay ? (
               <View style={styles.timeRow}>
                 <View style={styles.timeGroup}>
                   <Text style={styles.timeLabel}>Start</Text>
@@ -512,7 +585,7 @@ function AddEventModal({
                   </View>
                 </View>
               </View>
-            )}
+            ) : null}
 
             <TouchableOpacity
               style={[styles.saveBtn, !title.trim() && styles.saveBtnDisabled]}
@@ -534,7 +607,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
 
   // Header
-  header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
+  header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xs, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: spacing.md },
   headerTitle: { fontSize: typography.fontSizeLg, fontWeight: '800', color: colors.text },
   addBtn: { padding: spacing.xs },
@@ -548,6 +621,24 @@ const styles = StyleSheet.create({
   viewBtnActive: { backgroundColor: colors.surface },
   viewBtnText: { fontSize: typography.fontSizeXs, fontWeight: '600', color: colors.textMuted },
   viewBtnTextActive: { color: colors.primaryDark },
+
+  // Source filters
+  filterScroll: { marginTop: spacing.sm, marginHorizontal: -spacing.lg },
+  filterRow: { flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.lg, paddingBottom: spacing.xs },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  filterChipAllActive: { backgroundColor: colors.primaryLight, borderColor: colors.primary },
+  filterChipText: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
+  filterChipTextAllActive: { color: colors.primaryDark },
 
   // Month view
   monthContainer: { flex: 1 },
@@ -578,6 +669,7 @@ const styles = StyleSheet.create({
   weekDayEvents: { gap: spacing.xs },
   noEventsText: { fontSize: typography.fontSizeXs, color: colors.textMuted, fontStyle: 'italic' },
   eventChip: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: 4, paddingHorizontal: spacing.sm, borderLeftWidth: 3, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
+  eventChipDot: { width: 6, height: 6, borderRadius: 3 },
   eventChipTime: { fontSize: typography.fontSizeXs, color: colors.textMuted, fontWeight: '500', minWidth: 56 },
   eventChipTitle: { fontSize: typography.fontSizeSm, fontWeight: '600', color: colors.text, flex: 1 },
 
