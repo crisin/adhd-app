@@ -22,4 +22,5 @@ export class InventoryItem extends Model {
   @field('image_uri') imageUri!: string | null;
   @readonly @date('created_at') createdAt!: Date;
   @date('updated_at') updatedAt!: Date;
+  @field('room_id') roomId!: string | null;
 }

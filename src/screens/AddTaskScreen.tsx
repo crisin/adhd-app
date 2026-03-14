@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,20 +7,25 @@ import {
   StyleSheet,
   Keyboard,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { createTask } from '../db/actions';
 import { colors, spacing, radius } from '../theme/tokens';
-import { TaskStatus, TaskCategory } from '../db/models/Task';
+import { TaskStatus, TaskCategory, TaskPriority } from '../db/models/Task';
 import { CATEGORIES } from '../theme/categories';
 import { RootStackParamList } from '../navigation';
 
-// TODO(phase2): subtasks — add option to attach subtasks during creation
-
 type RouteType = RouteProp<RootStackParamList, 'AddTask'>;
 const TIME_PRESETS = [5, 15, 30, 60] as const;
+
+const PRIORITIES: { value: TaskPriority; label: string; icon: string; color: string }[] = [
+  { value: 'high', label: 'High', icon: '⬆', color: colors.danger },
+  { value: 'medium', label: 'Medium', icon: '—', color: colors.accentDark },
+  { value: 'low', label: 'Low', icon: '⬇', color: colors.textMuted },
+];
 
 export function AddTaskScreen() {
   const navigation = useNavigation();
@@ -31,6 +36,8 @@ export function AddTaskScreen() {
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [destination, setDestination] = useState<TaskStatus>('today');
   const [category, setCategory] = useState<TaskCategory | null>(null);
+  const [priority, setPriority] = useState<TaskPriority>('medium');
+  const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
 
   const canSave = title.trim().length > 0;
@@ -39,7 +46,17 @@ export function AddTaskScreen() {
     if (!canSave || saving) return;
     setSaving(true);
     Keyboard.dismiss();
-    await createTask(title, estimatedMinutes, destination, category, prefilledGoalId);
+
+    let dueAt: number | null = null;
+    if (dueDate.trim()) {
+      const parsed = new Date(dueDate.trim());
+      if (!isNaN(parsed.getTime())) dueAt = parsed.getTime();
+    }
+
+    await createTask(title, estimatedMinutes, destination, category, prefilledGoalId, {
+      priority,
+      dueAt,
+    });
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     navigation.goBack();
   };
@@ -79,6 +96,24 @@ export function AddTaskScreen() {
           blurOnSubmit={false}
         />
 
+        {/* Priority */}
+        <Text style={styles.sectionLabel}>Priority</Text>
+        <View style={styles.priorityRow}>
+          {PRIORITIES.map((p) => {
+            const active = priority === p.value;
+            return (
+              <TouchableOpacity
+                key={p.value}
+                style={[styles.priorityChip, active && { borderColor: p.color, backgroundColor: p.color + '18' }]}
+                onPress={() => setPriority(p.value)}
+              >
+                <Text style={[styles.priorityIcon, { color: p.color }]}>{p.icon}</Text>
+                <Text style={[styles.priorityLabel, active && { color: p.color, fontWeight: '700' }]}>{p.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         {/* Category */}
         <Text style={styles.sectionLabel}>Category (optional)</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
@@ -98,6 +133,17 @@ export function AddTaskScreen() {
             })}
           </View>
         </ScrollView>
+
+        {/* Due date */}
+        <Text style={styles.sectionLabel}>Due date (optional)</Text>
+        <TextInput
+          style={styles.dueDateInput}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor={colors.textMuted}
+          value={dueDate}
+          onChangeText={setDueDate}
+          keyboardType="default"
+        />
 
         {/* Time estimate */}
         <Text style={styles.sectionLabel}>How long? (optional)</Text>
@@ -125,7 +171,7 @@ export function AddTaskScreen() {
               onPress={() => setDestination(dest)}
             >
               <Text style={[styles.toggleText, destination === dest && styles.toggleTextActive]}>
-                {dest === 'today' ? 'Today' : 'Backlog'}
+                {dest === 'today' ? 'Next Up' : 'Backlog'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -170,9 +216,9 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '600',
     color: colors.text,
-    minHeight: 100,
+    minHeight: 80,
     textAlignVertical: 'top',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
     padding: 0,
   },
   sectionLabel: {
@@ -183,7 +229,24 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: spacing.sm,
   },
-  categoryScroll: { marginBottom: spacing.xl, marginHorizontal: -spacing.lg },
+  // Priority
+  priorityRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
+  priorityChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  priorityIcon: { fontSize: 14 },
+  priorityLabel: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
+  // Category
+  categoryScroll: { marginBottom: spacing.lg, marginHorizontal: -spacing.lg },
   categoryRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg },
   catChip: {
     flexDirection: 'row',
@@ -199,7 +262,20 @@ const styles = StyleSheet.create({
   catEmoji: { fontSize: 14 },
   catLabel: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
   catLabelActive: { color: '#fff' },
-  presetRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xl },
+  // Due date
+  dueDateInput: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: 15,
+    color: colors.text,
+    marginBottom: spacing.lg,
+  },
+  // Time
+  presetRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
   preset: {
     flex: 1,
     paddingVertical: spacing.sm,
@@ -212,6 +288,7 @@ const styles = StyleSheet.create({
   presetActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
   presetText: { fontSize: 15, fontWeight: '600', color: colors.textMuted },
   presetTextActive: { color: colors.primaryDark },
+  // Destination
   toggleRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xxl },
   toggle: {
     flex: 1,
@@ -225,6 +302,7 @@ const styles = StyleSheet.create({
   toggleActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
   toggleText: { fontSize: 15, fontWeight: '600', color: colors.textMuted },
   toggleTextActive: { color: colors.primaryDark },
+  // Save
   saveBtn: {
     backgroundColor: colors.primaryDark,
     borderRadius: radius.lg,

@@ -14,6 +14,7 @@ import { IdeasScreen } from '../screens/IdeasScreen';
 import { KanbanScreen } from '../screens/KanbanScreen';
 import { InventoryScreen } from '../screens/InventoryScreen';
 import { PlantsScreen } from '../screens/PlantsScreen';
+import { CalendarScreen } from '../screens/CalendarScreen';
 import { SideNavPanel, NavigatorBridge, SIDE_NAV_WIDTH, DESKTOP_BREAKPOINT } from './SideNav';
 
 export type RootStackParamList = {
@@ -24,6 +25,7 @@ export type RootStackParamList = {
 
 export type MainTabParamList = {
   Today: undefined;
+  Calendar: undefined;
   Tasks: undefined;
   Kanban: undefined;
   Ideas: undefined;
@@ -34,7 +36,7 @@ export type MainTabParamList = {
 };
 
 // Route names in tab order — used to drive the side nav without needing runtime capture
-const TAB_ROUTE_NAMES = ['Today', 'Tasks', 'Kanban', 'Ideas', 'Goals', 'Inventory', 'Plants', 'Settings'] as const;
+const TAB_ROUTE_NAMES = ['Today', 'Calendar', 'Tasks', 'Kanban', 'Ideas', 'Goals', 'Inventory', 'Plants', 'Settings'] as const;
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -84,6 +86,7 @@ function MainTabs() {
           }}
         >
           <Tab.Screen name="Today"     component={TodayScreen} />
+          <Tab.Screen name="Calendar"  component={CalendarScreen} />
           <Tab.Screen name="Tasks"     component={BacklogScreen}  options={{ tabBarLabel: 'All Tasks' }} />
           <Tab.Screen name="Kanban"    component={KanbanScreen} />
           <Tab.Screen name="Ideas"     component={IdeasScreen} />

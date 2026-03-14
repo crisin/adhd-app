@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { usePlants } from '../hooks/usePlants';
-import { createPlant, updatePlant, waterPlant, deletePlant } from '../db/actions';
+import { createPlant, updatePlant, waterPlantAndSchedule, deletePlant } from '../db/actions';
 import { Plant } from '../db/models/Plant';
 import { colors, spacing, radius } from '../theme/tokens';
 
@@ -327,7 +327,7 @@ export function PlantsScreen() {
   });
 
   const handleWater = useCallback(async (plant: Plant) => {
-    await waterPlant(plant);
+    await waterPlantAndSchedule(plant);
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, []);
 

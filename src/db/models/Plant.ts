@@ -12,6 +12,7 @@ export class Plant extends Model {
   @text('notes') notes!: string | null;
   @field('image_uri') imageUri!: string | null;
   @readonly @date('created_at') createdAt!: Date;
+  @field('room_id') roomId!: string | null;
 
   /** Days since last watered (null = never watered) */
   get daysSinceWatered(): number | null {

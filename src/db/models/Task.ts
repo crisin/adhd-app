@@ -1,8 +1,10 @@
 import { Model } from '@nozbe/watermelondb';
-import { field, date, readonly, text, nochange } from '@nozbe/watermelondb/decorators';
+import { field, date, readonly, text } from '@nozbe/watermelondb/decorators';
 
 export type TaskStatus = 'backlog' | 'today' | 'active' | 'done' | 'skipped';
 export type TaskCategory = 'private' | 'school' | 'work' | 'health' | 'finance' | 'other';
+export type TaskPriority = 'high' | 'medium' | 'low';
+export type TaskSource = 'manual' | 'idea-dump' | 'plant-reminder';
 
 export class Task extends Model {
   static table = 'tasks';
@@ -18,9 +20,27 @@ export class Task extends Model {
   @readonly @date('created_at') createdAt!: Date;
   @date('completed_at') completedAt!: Date | null;
 
-  // TODO(phase2): subtasks — add associations and parentId field
-  // static associations = {
-  //   tasks: { type: 'belongs_to', key: 'parent_id' },
-  // };
-  // @field('parent_id') parentId!: string | null;
+  // v5: task model expansion
+  @field('priority') priority!: TaskPriority;
+  @field('due_at') dueAt!: number | null;
+  @text('recurrence_rule') recurrenceRule!: string | null;
+  @field('source') source!: TaskSource;
+  @field('plant_id') plantId!: string | null;
+  @date('archived_at') archivedAt!: Date | null;
+
+  get isOverdue(): boolean {
+    if (!this.dueAt || this.status === 'done') return false;
+    return this.dueAt < Date.now();
+  }
+
+  get isDueToday(): boolean {
+    if (!this.dueAt || this.status === 'done') return false;
+    const now = new Date();
+    const due = new Date(this.dueAt);
+    return (
+      due.getFullYear() === now.getFullYear() &&
+      due.getMonth() === now.getMonth() &&
+      due.getDate() === now.getDate()
+    );
+  }
 }

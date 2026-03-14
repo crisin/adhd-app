@@ -9,6 +9,11 @@ import { Goal } from './models/Goal';
 import { Idea } from './models/Idea';
 import { InventoryItem } from './models/InventoryItem';
 import { Plant } from './models/Plant';
+import { Subtask } from './models/Subtask';
+import { Label } from './models/Label';
+import { TaskLabel } from './models/TaskLabel';
+import { Room } from './models/Room';
+import { CalendarEvent } from './models/CalendarEvent';
 
 const adapter = new SQLiteAdapter({
   schema,
@@ -21,11 +26,17 @@ const adapter = new SQLiteAdapter({
 
 export const database = new Database({
   adapter,
-  modelClasses: [Task, FocusSession, Reminder, Goal, Idea, InventoryItem, Plant],
+  modelClasses: [
+    Task, FocusSession, Reminder, Goal, Idea,
+    InventoryItem, Plant,
+    Subtask, Label, TaskLabel, Room, CalendarEvent,
+  ],
 });
 
 export { Task, FocusSession, Reminder, Goal, Idea, InventoryItem, Plant };
-export type { TaskStatus, TaskCategory } from './models/Task';
+export { Subtask, Label, TaskLabel, Room, CalendarEvent };
+export type { TaskStatus, TaskCategory, TaskPriority, TaskSource } from './models/Task';
 export type { GoalType, GoalStatus } from './models/Goal';
 export type { EscalationLevel } from './models/Reminder';
 export type { InventoryRoom } from './models/InventoryItem';
+export type { CalendarEventSource } from './models/CalendarEvent';

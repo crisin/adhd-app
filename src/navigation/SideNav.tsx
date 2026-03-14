@@ -24,6 +24,7 @@ type RouteIconMap = {
 
 export const ROUTE_META: Record<string, RouteIconMap> = {
   Today:     { focused: 'today',    unfocused: 'today-outline',    label: 'Today'      },
+  Calendar:  { focused: 'calendar', unfocused: 'calendar-outline', label: 'Calendar'   },
   Tasks:     { focused: 'list',     unfocused: 'list-outline',     label: 'All Tasks'  },
   Kanban:    { focused: 'grid',     unfocused: 'grid-outline',     label: 'Kanban'     },
   Ideas:     { focused: 'bulb',     unfocused: 'bulb-outline',     label: 'Ideas'      },
@@ -33,8 +34,8 @@ export const ROUTE_META: Record<string, RouteIconMap> = {
   Settings:  { focused: 'settings', unfocused: 'settings-outline', label: 'Settings'   },
 };
 
-// First 3 tabs always visible in the mobile bottom bar
-const PRIMARY_ROUTES = ['Today', 'Tasks', 'Kanban'] as const;
+// First 4 tabs always visible in the mobile bottom bar
+const PRIMARY_ROUTES = ['Today', 'Calendar', 'Tasks', 'Kanban'] as const;
 // Everything else lives behind the "More" button
 const MORE_ROUTES = ['Ideas', 'Goals', 'Inventory', 'Plants', 'Settings'] as const;
 
