@@ -1,9 +1,9 @@
 import { Wllama } from '@wllama/wllama/esm';
 import { AIEngine, AIEngineState, DecomposedTask, SYSTEM_PROMPT, TASK_CATEGORIES } from './types';
 
-// Qwen 2.5 3B Instruct Q4_K_M — good structured output, ~2 GB download
-const MODEL_REPO = 'Qwen/Qwen2.5-3B-Instruct-GGUF';
-const MODEL_FILE = 'qwen2.5-3b-instruct-q4_k_m.gguf';
+// Qwen 2.5 0.5B — small enough for fast WASM single-thread inference (~400 MB)
+const MODEL_REPO = 'Qwen/Qwen2.5-0.5B-Instruct-GGUF';
+const MODEL_FILE = 'qwen2.5-0.5b-instruct-q8_0.gguf';
 
 const INITIAL_STATE: AIEngineState = {
   status: 'idle',
@@ -24,6 +24,7 @@ class WllamaEngine implements AIEngine {
   private wllama: any = null;
   private state: AIEngineState = { ...INITIAL_STATE };
   private listeners = new Set<(state: AIEngineState) => void>();
+  private thinkingTimer: ReturnType<typeof setInterval> | null = null;
 
   getState(): AIEngineState {
     return this.state;
@@ -39,6 +40,21 @@ class WllamaEngine implements AIEngine {
     this.listeners.forEach((fn) => fn(this.state));
   }
 
+  private startThinkingTimer() {
+    const start = Date.now();
+    this.thinkingTimer = setInterval(() => {
+      const elapsed = ((Date.now() - start) / 1000).toFixed(0);
+      this.setState({ statusMessage: `Processing prompt... ${elapsed}s` });
+    }, 500);
+  }
+
+  private stopThinkingTimer() {
+    if (this.thinkingTimer) {
+      clearInterval(this.thinkingTimer);
+      this.thinkingTimer = null;
+    }
+  }
+
   isReady(): boolean {
     return this.state.status === 'ready';
   }
@@ -49,9 +65,7 @@ class WllamaEngine implements AIEngine {
     this.setState({ status: 'loading', loadProgress: 0, error: null, statusMessage: 'Initializing WASM runtime...' });
 
     try {
-      // Only provide single-thread WASM — multi-thread requires
-      // Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy
-      // headers for SharedArrayBuffer, which Expo's dev server doesn't set.
+      // Single-thread only — multi-thread needs COOP/COEP headers
       const wasmPaths = {
         'single-thread/wllama.wasm': '/wllama/single-thread.wasm',
       };
@@ -63,15 +77,10 @@ class WllamaEngine implements AIEngine {
         suppressNativeLog: true,
       });
 
-      const nThreads = navigator.hardwareConcurrency
-        ? Math.min(navigator.hardwareConcurrency, 4)
-        : 2;
-
-      this.setState({ statusMessage: `Downloading model (Qwen 2.5 3B)...`, loadProgress: 0.01 });
+      this.setState({ statusMessage: 'Downloading model (Qwen 2.5 0.5B)...', loadProgress: 0.01 });
 
       await this.wllama.loadModelFromHF(MODEL_REPO, MODEL_FILE, {
-        n_ctx: 2048,
-        n_threads: nThreads,
+        n_ctx: 1024,
         progressCallback: ({ loaded, total }: { loaded: number; total: number }) => {
           if (total > 0) {
             const pct = loaded / total;
@@ -86,7 +95,7 @@ class WllamaEngine implements AIEngine {
       this.setState({
         status: 'ready',
         loadProgress: 1,
-        statusMessage: `Model loaded (${nThreads} threads)`,
+        statusMessage: 'Model loaded — ready to decompose ideas',
       });
     } catch (err: any) {
       this.setState({
@@ -103,17 +112,18 @@ class WllamaEngine implements AIEngine {
 
     this.setState({
       status: 'generating',
-      statusMessage: 'Preparing prompt...',
+      statusMessage: 'Processing prompt... 0s',
       tokensGenerated: 0,
       partialOutput: '',
     });
 
+    this.startThinkingTimer();
+
     try {
       const grammar = buildJsonGrammar();
       let tokenCount = 0;
+      let firstTokenTime: number | null = null;
       const startTime = Date.now();
-
-      this.setState({ statusMessage: 'Thinking...' });
 
       const result = await this.wllama.createChatCompletion(
         [
@@ -121,7 +131,7 @@ class WllamaEngine implements AIEngine {
           { role: 'user', content: text },
         ],
         {
-          nPredict: 1024,
+          nPredict: 512,
           sampling: {
             temp: 0.3,
             top_p: 0.9,
@@ -129,9 +139,15 @@ class WllamaEngine implements AIEngine {
           },
           useCache: false,
           onNewToken: (_token: number, _piece: Uint8Array, currentText: string) => {
+            if (tokenCount === 0) {
+              this.stopThinkingTimer();
+              firstTokenTime = Date.now();
+              const promptTime = ((firstTokenTime - startTime) / 1000).toFixed(1);
+              this.setState({ statusMessage: `Prompt processed in ${promptTime}s. Generating...` });
+            }
             tokenCount++;
-            const elapsed = (Date.now() - startTime) / 1000;
-            const tokPerSec = elapsed > 0 ? (tokenCount / elapsed).toFixed(1) : '...';
+            const genElapsed = firstTokenTime ? (Date.now() - firstTokenTime) / 1000 : 0;
+            const tokPerSec = genElapsed > 0 ? (tokenCount / genElapsed).toFixed(1) : '...';
             this.setState({
               tokensGenerated: tokenCount,
               partialOutput: currentText,
@@ -141,20 +157,23 @@ class WllamaEngine implements AIEngine {
         }
       );
 
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      this.stopThinkingTimer();
+
+      const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       const parsed = JSON.parse(result);
       const sanitized = this.sanitize(parsed);
       const subtaskCount = sanitized.subtasks.length;
 
       this.setState({
         status: 'ready',
-        statusMessage: `Done! ${tokenCount} tokens in ${elapsed}s \u2014 ${sanitized.title} + ${subtaskCount} subtask${subtaskCount !== 1 ? 's' : ''}`,
+        statusMessage: `Done in ${totalElapsed}s — ${sanitized.title} + ${subtaskCount} subtask${subtaskCount !== 1 ? 's' : ''}`,
         tokensGenerated: tokenCount,
         partialOutput: '',
       });
 
       return sanitized;
     } catch (err: any) {
+      this.stopThinkingTimer();
       this.setState({
         status: 'ready',
         statusMessage: `Generation failed: ${err?.message}`,

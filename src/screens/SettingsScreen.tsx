@@ -185,7 +185,7 @@ function AISection() {
       <Text style={styles.sectionLabel}>Local AI</Text>
       <View style={styles.aiRow}>
         <View style={styles.aiInfo}>
-          <Text style={styles.aiModelName}>Qwen 2.5 3B Instruct</Text>
+          <Text style={styles.aiModelName}>Qwen 2.5 0.5B Instruct</Text>
           <Text style={[styles.aiStatusLabel, { color: statusColor }]}>{statusLabel}</Text>
         </View>
         {ai.status === 'idle' || ai.status === 'error' ? (
@@ -204,7 +204,7 @@ function AISection() {
         </View>
       )}
       <Text style={styles.aiHint}>
-        Runs 100% in your browser via WebAssembly. First download is ~2 GB, then cached for offline use.
+        Runs 100% in your browser via WebAssembly. First download is ~530 MB, then cached for offline use.
       </Text>
     </View>
   );
