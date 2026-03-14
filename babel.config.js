@@ -6,6 +6,8 @@ module.exports = function (api) {
       'nativewind/babel',
     ],
     plugins: [
+      ['@babel/plugin-proposal-decorators', { legacy: true }],
+      ['@babel/plugin-transform-class-properties', { loose: true }],
       'react-native-reanimated/plugin', // must be last
     ],
   };
