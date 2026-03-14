@@ -49,9 +49,11 @@ class WllamaEngine implements AIEngine {
     this.setState({ status: 'loading', loadProgress: 0, error: null, statusMessage: 'Initializing WASM runtime...' });
 
     try {
+      // Only provide single-thread WASM — multi-thread requires
+      // Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy
+      // headers for SharedArrayBuffer, which Expo's dev server doesn't set.
       const wasmPaths = {
         'single-thread/wllama.wasm': '/wllama/single-thread.wasm',
-        'multi-thread/wllama.wasm': '/wllama/multi-thread.wasm',
       };
 
       this.setState({ statusMessage: 'Loading WebAssembly engine...' });
