@@ -31,13 +31,14 @@ export const ROUTE_META: Record<string, RouteIconMap> = {
   Goals:     { focused: 'flag',     unfocused: 'flag-outline',     label: 'Goals'      },
   Inventory: { focused: 'home',     unfocused: 'home-outline',     label: 'Inventory'  },
   Plants:    { focused: 'leaf',     unfocused: 'leaf-outline',     label: 'Plants'     },
+  Locations: { focused: 'map',      unfocused: 'map-outline',      label: 'Locations'  },
   Settings:  { focused: 'settings', unfocused: 'settings-outline', label: 'Settings'   },
 };
 
 // First 4 tabs always visible in the mobile bottom bar
 const PRIMARY_ROUTES = ['Today', 'Calendar', 'Tasks', 'Kanban'] as const;
 // Everything else lives behind the "More" button
-const MORE_ROUTES = ['Ideas', 'Goals', 'Inventory', 'Plants', 'Settings'] as const;
+const MORE_ROUTES = ['Ideas', 'Goals', 'Inventory', 'Plants', 'Locations', 'Settings'] as const;
 
 // Desktop sidebar: Settings pinned at bottom, rest up top
 const DESKTOP_BOTTOM = new Set(['Settings']);

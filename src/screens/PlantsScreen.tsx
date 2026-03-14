@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { usePlants } from '../hooks/usePlants';
 import { createPlant, updatePlant, waterPlantAndSchedule, deletePlant } from '../db/actions';
 import { Plant } from '../db/models/Plant';
+import { LocationPicker } from '../components/LocationPicker';
 import { colors, spacing, radius } from '../theme/tokens';
 
 // ─── Watering status config ───────────────────────────────────────────────────
@@ -119,6 +120,7 @@ type FormState = {
   useCustom: boolean;
   location: string;
   notes: string;
+  roomId: string | null;
 };
 
 const EMPTY_FORM: FormState = {
@@ -129,6 +131,7 @@ const EMPTY_FORM: FormState = {
   useCustom: false,
   location: '',
   notes: '',
+  roomId: null,
 };
 
 function PlantModal({ visible, editing, onClose }: {
@@ -151,6 +154,7 @@ function PlantModal({ visible, editing, onClose }: {
           useCustom: !isPreset,
           location: editing.location ?? '',
           notes: editing.notes ?? '',
+          roomId: editing.roomId ?? null,
         });
       } else {
         setForm(EMPTY_FORM);
@@ -177,6 +181,7 @@ function PlantModal({ visible, editing, onClose }: {
         wateringIntervalDays: resolvedInterval,
         location: form.location.trim() || null,
         notes: form.notes.trim() || null,
+        roomId: form.roomId,
       });
     } else {
       await createPlant(
@@ -185,6 +190,7 @@ function PlantModal({ visible, editing, onClose }: {
         form.species.trim() || null,
         form.location.trim() || null,
         form.notes.trim() || null,
+        form.roomId,
       );
     }
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -270,9 +276,16 @@ function PlantModal({ visible, editing, onClose }: {
 
             {/* Location */}
             <Text style={styles.sectionLabel}>Location (optional)</Text>
+            <LocationPicker
+              selectedRoomId={form.roomId}
+              onSelect={(id) => setForm((f) => ({ ...f, roomId: id }))}
+              placeholder="Select a location…"
+            />
+            <View style={{ height: spacing.md }} />
+            <Text style={styles.sectionLabel}>Specific spot (optional)</Text>
             <TextInput
               style={styles.fieldInput}
-              placeholder="e.g. living room windowsill"
+              placeholder="e.g. windowsill, balcony corner…"
               placeholderTextColor={colors.textMuted}
               value={form.location}
               onChangeText={set('location')}

@@ -9,4 +9,6 @@ export class Room extends Model {
   @field('color') color!: string | null;
   @field('sort_order') sortOrder!: number;
   @readonly @date('created_at') createdAt!: Date;
+  // v6: nested locations
+  @field('parent_id') parentId!: string | null;
 }

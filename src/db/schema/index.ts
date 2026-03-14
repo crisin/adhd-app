@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 5,
+  version: 6,
   tables: [
     tableSchema({
       name: 'tasks',
@@ -130,6 +130,8 @@ export const schema = appSchema({
         { name: 'color', type: 'string', isOptional: true },
         { name: 'sort_order', type: 'number' },
         { name: 'created_at', type: 'number' },
+        // v6: nested locations
+        { name: 'parent_id', type: 'string', isOptional: true, isIndexed: true },
       ],
     }),
     tableSchema({

@@ -3,6 +3,17 @@ import { addColumns, createTable, schemaMigrations } from '@nozbe/watermelondb/S
 export const migrations = schemaMigrations({
   migrations: [
     {
+      toVersion: 6,
+      steps: [
+        addColumns({
+          table: 'rooms',
+          columns: [
+            { name: 'parent_id', type: 'string', isOptional: true, isIndexed: true },
+          ],
+        }),
+      ],
+    },
+    {
       toVersion: 5,
       steps: [
         // Task model expansion

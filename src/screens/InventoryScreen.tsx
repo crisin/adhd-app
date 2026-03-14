@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { useInventoryItems } from '../hooks/useInventoryItems';
 import { createInventoryItem, updateInventoryItem, deleteInventoryItem } from '../db/actions';
 import { InventoryItem, InventoryRoom } from '../db/models/InventoryItem';
+import { LocationPicker } from '../components/LocationPicker';
 import { colors, spacing, radius } from '../theme/tokens';
 
 // ─── Room config ──────────────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ type ItemFormState = {
   location: string;
   quantity: string;
   notes: string;
+  roomId: string | null;
 };
 
 const EMPTY_FORM: ItemFormState = {
@@ -97,6 +99,7 @@ const EMPTY_FORM: ItemFormState = {
   location: '',
   quantity: '1',
   notes: '',
+  roomId: null,
 };
 
 function ItemModal({ visible, editing, onClose }: {
@@ -117,6 +120,7 @@ function ItemModal({ visible, editing, onClose }: {
           location: editing.location ?? '',
           quantity: String(editing.quantity),
           notes: editing.notes ?? '',
+          roomId: editing.roomId ?? null,
         });
       } else {
         setForm(EMPTY_FORM);
@@ -138,6 +142,7 @@ function ItemModal({ visible, editing, onClose }: {
         location: form.location.trim() || null,
         quantity,
         notes: form.notes.trim() || null,
+        roomId: form.roomId,
       });
     } else {
       await createInventoryItem(
@@ -146,6 +151,7 @@ function ItemModal({ visible, editing, onClose }: {
         form.location.trim() || null,
         quantity,
         form.notes.trim() || null,
+        form.roomId,
       );
     }
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -201,7 +207,14 @@ function ItemModal({ visible, editing, onClose }: {
             </View>
 
             {/* Location */}
-            <Text style={styles.sectionLabel}>Specific location (optional)</Text>
+            <Text style={styles.sectionLabel}>Location (optional)</Text>
+            <LocationPicker
+              selectedRoomId={form.roomId}
+              onSelect={(id) => setForm((f) => ({ ...f, roomId: id }))}
+              placeholder="Select a location…"
+            />
+            <View style={{ height: spacing.md }} />
+            <Text style={styles.sectionLabel}>Specific spot (optional)</Text>
             <TextInput
               style={styles.fieldInput}
               placeholder="e.g. top shelf, junk drawer…"

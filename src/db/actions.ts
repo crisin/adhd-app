@@ -313,7 +313,12 @@ export async function ideaToTask(
 
 // ─── Rooms ────────────────────────────────────────────────────────────────────
 
-export async function createRoom(name: string, emoji: string | null = null, color: string | null = null): Promise<Room> {
+export async function createRoom(
+  name: string,
+  emoji: string | null = null,
+  color: string | null = null,
+  parentId: string | null = null
+): Promise<Room> {
   let room!: Room;
   await database.write(async () => {
     room = await database.get<Room>('rooms').create((r) => {
@@ -321,19 +326,33 @@ export async function createRoom(name: string, emoji: string | null = null, colo
       r.emoji = emoji;
       r.color = color;
       r.sortOrder = Date.now();
+      r.parentId = parentId;
     });
   });
   return room;
 }
 
-export async function updateRoom(room: Room, fields: { name?: string; emoji?: string | null; color?: string | null }): Promise<void> {
+export async function updateRoom(room: Room, fields: { name?: string; emoji?: string | null; color?: string | null; parentId?: string | null }): Promise<void> {
   await database.write(async () => {
     await room.update((r) => {
       if (fields.name !== undefined) r.name = fields.name.trim();
       if (fields.emoji !== undefined) r.emoji = fields.emoji;
       if (fields.color !== undefined) r.color = fields.color;
+      if (fields.parentId !== undefined) r.parentId = fields.parentId;
     });
   });
+}
+
+/** Build breadcrumb path for a room: "Home > Living Room > Shelf" */
+export function getRoomPath(room: Room, allRooms: Room[]): string {
+  const parts: string[] = [];
+  const roomMap = new Map(allRooms.map((r) => [r.id, r]));
+  let current: Room | undefined = room;
+  while (current) {
+    parts.unshift(current.emoji ? `${current.emoji} ${current.name}` : current.name);
+    current = current.parentId ? roomMap.get(current.parentId) : undefined;
+  }
+  return parts.join(' > ');
 }
 
 export async function deleteRoom(room: Room): Promise<void> {
