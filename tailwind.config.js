@@ -8,6 +8,27 @@ module.exports = {
   presets: [require('nativewind/preset')],
   theme: {
     extend: {
+      spacing: {
+        xs: 4,
+        sm: 8,
+        md: 16,
+        lg: 24,
+        xl: 32,
+        xxl: 48,
+      },
+      fontSize: {
+        xs: 12,
+        sm: 14,
+        md: 16,
+        lg: 20,
+        xl: 28,
+        xxl: 40,
+      },
+      borderRadius: {
+        sm: 6,
+        md: 12,
+        lg: 20,
+      },
       colors: {
         // Mirror src/theme/tokens.ts — update both if you change the palette
         primary: {

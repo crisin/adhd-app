@@ -1,5 +1,5 @@
 /**
- * TadiHD Design Tokens
+ * tADiHD Design Tokens
  *
  * All colors are defined here as a single source of truth.
  * To change the theme, swap these values — nothing else needs to change.

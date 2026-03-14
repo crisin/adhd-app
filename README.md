@@ -1,4 +1,4 @@
-# TadiHD
+# tADiHD
 
 An ADHD-focused productivity app built around how ADHD brains actually work — time blindness, task paralysis, hyperfocus traps, and the need for dopamine rewards.
 

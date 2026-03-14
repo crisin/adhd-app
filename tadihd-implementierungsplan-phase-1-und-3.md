@@ -1,4 +1,4 @@
-# TadiHD — genauer Implementierungsplan für Phase 1 und Phase 3
+# tADiHD — genauer Implementierungsplan für Phase 1 und Phase 3
 
 ## Ausgangslage
 

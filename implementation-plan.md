@@ -190,7 +190,7 @@ dismissed: boolean
 
 | Decision | Choice |
 |---|---|
-| App name | **TadiHD** |
+| App name | **tADiHD** |
 | Timer visual | Horizontal progress bar (shrinking, color-shifting) |
 | Color system | CSS custom properties (design tokens) — default: light green (`#A8D5A2` family), user-swappable |
 

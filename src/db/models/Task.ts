@@ -2,6 +2,7 @@ import { Model } from '@nozbe/watermelondb';
 import { field, date, readonly, text, nochange } from '@nozbe/watermelondb/decorators';
 
 export type TaskStatus = 'backlog' | 'today' | 'active' | 'done' | 'skipped';
+export type TaskCategory = 'private' | 'school' | 'work' | 'health' | 'finance' | 'other';
 
 export class Task extends Model {
   static table = 'tasks';
@@ -9,6 +10,8 @@ export class Task extends Model {
   @text('title') title!: string;
   @text('notes') notes!: string | null;
   @field('status') status!: TaskStatus;
+  @field('category') category!: TaskCategory | null;
+  @field('goal_id') goalId!: string | null;
   @field('estimated_minutes') estimatedMinutes!: number | null;
   @field('actual_minutes') actualMinutes!: number | null;
   @field('sort_order') sortOrder!: number;

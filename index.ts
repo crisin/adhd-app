@@ -1,3 +1,8 @@
+// Polyfill import.meta for web (zustand devtools uses import.meta.env)
+if (typeof (globalThis as any).__ExpoImportMetaRegistry === 'undefined') {
+  (globalThis as any).__ExpoImportMetaRegistry = {};
+}
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';
