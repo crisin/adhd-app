@@ -73,7 +73,8 @@ function KanbanCard({ task, onMove, onDelete, onStartFocus }: {
 }) {
   const [expanded, setExpanded] = useState(false);
   const cat = getCategoryMeta(task.category);
-  const priorityColor = PRIORITY_COLORS[task.priority ?? 'medium'];
+  const effectivePriority = task.priority || 'medium';
+  const priorityColor = PRIORITY_COLORS[effectivePriority];
 
   return (
     <View style={styles.card}>
@@ -96,11 +97,11 @@ function KanbanCard({ task, onMove, onDelete, onStartFocus }: {
                 📅 {new Date(task.dueAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
               </Text>
             ) : null}
-            {task.priority && task.priority !== 'medium' && (
+            {task.priority === 'high' || task.priority === 'low' ? (
               <Text style={[styles.metaText, { color: priorityColor, fontWeight: '700' }]}>
                 {task.priority === 'high' ? '⬆ High' : '⬇ Low'}
               </Text>
-            )}
+            ) : null}
           </View>
         </View>
       </TouchableOpacity>
