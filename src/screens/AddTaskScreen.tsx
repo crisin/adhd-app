@@ -7,25 +7,32 @@ import {
   StyleSheet,
   Keyboard,
   ScrollView,
+  ActivityIndicator,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { createTask } from '../db/actions';
+import { createTask, createSubtask } from '../db/actions';
 import { colors, spacing, radius } from '../theme/tokens';
 import { TaskStatus, TaskCategory, TaskPriority } from '../db/models/Task';
 import { CATEGORIES } from '../theme/categories';
 import { RootStackParamList } from '../navigation';
+import { useAI } from '../hooks/useAI';
 
 type RouteType = RouteProp<RootStackParamList, 'AddTask'>;
 const TIME_PRESETS = [5, 15, 30, 60] as const;
 
 const PRIORITIES: { value: TaskPriority; label: string; icon: string; color: string }[] = [
-  { value: 'high', label: 'High', icon: '⬆', color: colors.danger },
-  { value: 'medium', label: 'Medium', icon: '—', color: colors.accentDark },
-  { value: 'low', label: 'Low', icon: '⬇', color: colors.textMuted },
+  { value: 'high', label: 'High', icon: '\u2B06', color: colors.danger },
+  { value: 'medium', label: 'Medium', icon: '\u2014', color: colors.accentDark },
+  { value: 'low', label: 'Low', icon: '\u2B07', color: colors.textMuted },
 ];
+
+interface SubtaskDraft {
+  title: string;
+  estimatedMinutes: number | null;
+}
 
 export function AddTaskScreen() {
   const navigation = useNavigation();
@@ -38,9 +45,33 @@ export function AddTaskScreen() {
   const [category, setCategory] = useState<TaskCategory | null>(null);
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [dueDate, setDueDate] = useState('');
+  const [subtasks, setSubtasks] = useState<SubtaskDraft[]>([]);
   const [saving, setSaving] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
+  const ai = useAI();
   const canSave = title.trim().length > 0;
+  const canDecompose = title.trim().length > 3;
+
+  const handleDecompose = async () => {
+    if (!canDecompose || ai.isGenerating) return;
+    setAiError(null);
+    Keyboard.dismiss();
+
+    try {
+      const result = await ai.decompose(title);
+      // Auto-fill form with AI suggestions
+      setTitle(result.title);
+      if (result.category) setCategory(result.category);
+      setPriority(result.priority);
+      if (result.estimatedMinutes) setEstimatedMinutes(result.estimatedMinutes);
+      setSubtasks(result.subtasks);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err: any) {
+      setAiError(err?.message ?? 'AI failed');
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  };
 
   const handleSave = async () => {
     if (!canSave || saving) return;
@@ -53,12 +84,32 @@ export function AddTaskScreen() {
       if (!isNaN(parsed.getTime())) dueAt = parsed.getTime();
     }
 
-    await createTask(title, estimatedMinutes, destination, category, prefilledGoalId, {
+    const task = await createTask(title, estimatedMinutes, destination, category, prefilledGoalId, {
       priority,
       dueAt,
     });
+
+    // Create subtasks if any
+    for (const st of subtasks) {
+      if (st.title.trim()) {
+        await createSubtask(task.id, st.title);
+      }
+    }
+
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     navigation.goBack();
+  };
+
+  const updateSubtask = (index: number, newTitle: string) => {
+    setSubtasks((prev) => prev.map((s, i) => (i === index ? { ...s, title: newTitle } : s)));
+  };
+
+  const removeSubtask = (index: number) => {
+    setSubtasks((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addSubtask = () => {
+    setSubtasks((prev) => [...prev, { title: '', estimatedMinutes: null }]);
   };
 
   return (
@@ -82,19 +133,85 @@ export function AddTaskScreen() {
           </View>
         )}
 
-        {/* Title input */}
-        <TextInput
-          autoFocus
-          multiline
-          style={styles.titleInput}
-          placeholder="What's on your mind?"
-          placeholderTextColor={colors.textMuted}
-          value={title}
-          onChangeText={setTitle}
-          returnKeyType="done"
-          onSubmitEditing={handleSave}
-          blurOnSubmit={false}
-        />
+        {/* Title input + AI button */}
+        <View style={styles.titleRow}>
+          <TextInput
+            autoFocus
+            multiline
+            style={styles.titleInput}
+            placeholder="What's on your mind?"
+            placeholderTextColor={colors.textMuted}
+            value={title}
+            onChangeText={setTitle}
+            returnKeyType="done"
+            onSubmitEditing={handleSave}
+            blurOnSubmit={false}
+          />
+          {Platform.OS === 'web' && (
+            <TouchableOpacity
+              style={[
+                styles.aiBtn,
+                !canDecompose && styles.aiBtnDisabled,
+                ai.isGenerating && styles.aiBtnActive,
+              ]}
+              onPress={handleDecompose}
+              disabled={!canDecompose || ai.isGenerating}
+              activeOpacity={0.7}
+            >
+              {ai.isGenerating ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.aiBtnText}>AI</Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* AI loading / status */}
+        {ai.isLoading && (
+          <View style={styles.aiStatus}>
+            <View style={styles.aiProgressBar}>
+              <View style={[styles.aiProgressFill, { width: `${Math.round(ai.loadProgress * 100)}%` }]} />
+            </View>
+            <Text style={styles.aiStatusText}>
+              Loading AI model... {Math.round(ai.loadProgress * 100)}%
+            </Text>
+          </View>
+        )}
+
+        {aiError && (
+          <View style={styles.aiErrorBox}>
+            <Text style={styles.aiErrorText}>{aiError}</Text>
+          </View>
+        )}
+
+        {/* Subtasks (from AI or manual) */}
+        {subtasks.length > 0 && (
+          <View style={styles.subtasksSection}>
+            <Text style={styles.sectionLabel}>Subtasks</Text>
+            {subtasks.map((st, i) => (
+              <View key={i} style={styles.subtaskRow}>
+                <View style={styles.subtaskBullet} />
+                <TextInput
+                  style={styles.subtaskInput}
+                  value={st.title}
+                  onChangeText={(text) => updateSubtask(i, text)}
+                  placeholder="Subtask..."
+                  placeholderTextColor={colors.textMuted}
+                />
+                {st.estimatedMinutes ? (
+                  <Text style={styles.subtaskTime}>{st.estimatedMinutes}m</Text>
+                ) : null}
+                <TouchableOpacity onPress={() => removeSubtask(i)} style={styles.subtaskRemove}>
+                  <Text style={styles.subtaskRemoveText}>{'\u2715'}</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+            <TouchableOpacity style={styles.addSubtaskBtn} onPress={addSubtask}>
+              <Text style={styles.addSubtaskText}>+ Add subtask</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Priority */}
         <Text style={styles.sectionLabel}>Priority</Text>
@@ -177,6 +294,13 @@ export function AddTaskScreen() {
           ))}
         </View>
 
+        {/* Manual subtask add (when no AI subtasks yet) */}
+        {subtasks.length === 0 && (
+          <TouchableOpacity style={styles.addSubtaskBtnStandalone} onPress={addSubtask}>
+            <Text style={styles.addSubtaskText}>+ Add subtasks</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Save */}
         <TouchableOpacity
           style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
@@ -184,7 +308,7 @@ export function AddTaskScreen() {
           disabled={!canSave || saving}
           activeOpacity={0.85}
         >
-          <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save task'}</Text>
+          <Text style={styles.saveBtnText}>{saving ? 'Saving\u2026' : 'Save task'}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -212,15 +336,79 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   goalPillText: { fontSize: 13, fontWeight: '600', color: '#6D28D9' },
+  // Title + AI
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, marginBottom: spacing.lg },
   titleInput: {
+    flex: 1,
     fontSize: 28,
     fontWeight: '600',
     color: colors.text,
     minHeight: 80,
     textAlignVertical: 'top',
-    marginBottom: spacing.lg,
     padding: 0,
   },
+  aiBtn: {
+    backgroundColor: '#7C3AED',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginTop: 4,
+    minWidth: 48,
+    alignItems: 'center',
+  },
+  aiBtnDisabled: { opacity: 0.35 },
+  aiBtnActive: { backgroundColor: '#6D28D9' },
+  aiBtnText: { fontSize: 15, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+  // AI status
+  aiStatus: { marginBottom: spacing.md },
+  aiProgressBar: {
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: spacing.xs,
+  },
+  aiProgressFill: { height: '100%', backgroundColor: '#7C3AED', borderRadius: 2 },
+  aiStatusText: { fontSize: 12, color: colors.textMuted },
+  aiErrorBox: {
+    backgroundColor: '#FEE2E2',
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  aiErrorText: { fontSize: 13, color: '#991B1B' },
+  // Subtasks
+  subtasksSection: { marginBottom: spacing.lg },
+  subtaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.surface,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  subtaskBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.textMuted,
+  },
+  subtaskInput: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    paddingVertical: 4,
+  },
+  subtaskTime: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
+  subtaskRemove: { padding: 4 },
+  subtaskRemoveText: { fontSize: 12, color: colors.textMuted },
+  addSubtaskBtn: { paddingVertical: spacing.xs },
+  addSubtaskText: { fontSize: 13, fontWeight: '600', color: colors.primaryDark },
+  addSubtaskBtnStandalone: { marginBottom: spacing.lg, paddingVertical: spacing.xs },
   sectionLabel: {
     fontSize: 12,
     fontWeight: '700',
@@ -289,7 +477,7 @@ const styles = StyleSheet.create({
   presetText: { fontSize: 15, fontWeight: '600', color: colors.textMuted },
   presetTextActive: { color: colors.primaryDark },
   // Destination
-  toggleRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xxl },
+  toggleRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
   toggle: {
     flex: 1,
     paddingVertical: spacing.sm,
@@ -308,6 +496,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     paddingVertical: spacing.md,
     alignItems: 'center',
+    marginTop: spacing.md,
   },
   saveBtnDisabled: { opacity: 0.4 },
   saveBtnText: { fontSize: 17, fontWeight: '700', color: colors.surface },

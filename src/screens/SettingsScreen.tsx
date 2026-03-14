@@ -9,6 +9,8 @@ import {
   TextInput,
   Modal,
   Pressable,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +26,7 @@ import {
 } from '../store/useSettingsStore';
 import { colors, spacing, radius } from '../theme/tokens';
 import { Task } from '../db/models/Task';
+import { useAI } from '../hooks/useAI';
 
 const WORK_OPTIONS = [10, 15, 20, 25, 30, 45, 60] as const;
 const WARNING_OPTIONS = [1, 2, 3, 5] as const;
@@ -156,6 +159,57 @@ function ColorPickerModal({
   );
 }
 
+// ─── AI Section ──────────────────────────────────────────────────────────────
+
+function AISection() {
+  const ai = useAI();
+
+  const statusLabel = {
+    idle: 'Not loaded',
+    loading: `Downloading... ${Math.round(ai.loadProgress * 100)}%`,
+    ready: 'Ready',
+    generating: 'Generating...',
+    error: ai.error ?? 'Error',
+  }[ai.status];
+
+  const statusColor = {
+    idle: colors.textMuted,
+    loading: '#7C3AED',
+    ready: '#10B981',
+    generating: '#7C3AED',
+    error: colors.danger,
+  }[ai.status];
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionLabel}>Local AI</Text>
+      <View style={styles.aiRow}>
+        <View style={styles.aiInfo}>
+          <Text style={styles.aiModelName}>Qwen 2.5 3B Instruct</Text>
+          <Text style={[styles.aiStatusLabel, { color: statusColor }]}>{statusLabel}</Text>
+        </View>
+        {ai.status === 'idle' || ai.status === 'error' ? (
+          <TouchableOpacity style={styles.aiLoadBtn} onPress={ai.initModel} activeOpacity={0.8}>
+            <Text style={styles.aiLoadBtnText}>Download</Text>
+          </TouchableOpacity>
+        ) : ai.isLoading ? (
+          <ActivityIndicator size="small" color="#7C3AED" />
+        ) : (
+          <View style={styles.aiReadyDot} />
+        )}
+      </View>
+      {ai.isLoading && (
+        <View style={styles.aiSettingsProgress}>
+          <View style={[styles.aiSettingsProgressFill, { width: `${Math.round(ai.loadProgress * 100)}%` }]} />
+        </View>
+      )}
+      <Text style={styles.aiHint}>
+        Model runs 100% on-device. First download is ~1.5 GB, then cached for offline use.
+      </Text>
+    </View>
+  );
+}
+
 // ─── Settings Screen ──────────────────────────────────────────────────────────
 
 export function SettingsScreen() {
@@ -267,6 +321,9 @@ export function SettingsScreen() {
             );
           })}
         </View>
+
+        {/* Local AI */}
+        {Platform.OS === 'web' && <AISection />}
 
         {/* Data */}
         <View style={styles.section}>
@@ -442,4 +499,35 @@ const styles = StyleSheet.create({
   },
   customColorBtnDisabled: { opacity: 0.4 },
   customColorBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+  // AI section
+  aiRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  aiInfo: { flex: 1 },
+  aiModelName: { fontSize: 15, fontWeight: '600', color: colors.text },
+  aiStatusLabel: { fontSize: 13, fontWeight: '500', marginTop: 2 },
+  aiLoadBtn: {
+    backgroundColor: '#7C3AED',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  aiLoadBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  aiReadyDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#10B981' },
+  aiSettingsProgress: {
+    height: 3,
+    backgroundColor: colors.border,
+    borderRadius: 1.5,
+    overflow: 'hidden',
+    marginBottom: spacing.xs,
+  },
+  aiSettingsProgressFill: { height: '100%', backgroundColor: '#7C3AED', borderRadius: 1.5 },
+  aiHint: { fontSize: 12, color: colors.textMuted, lineHeight: 16 },
 });
