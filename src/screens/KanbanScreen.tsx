@@ -47,7 +47,7 @@ function useAllActiveTasks(filterCategory: TaskCategory | null) {
         Q.where('status', Q.oneOf(['backlog', 'today', 'active', 'done'])),
         Q.sortBy('sort_order', Q.asc)
       )
-      .observe()
+      .observeWithColumns(['status', 'priority', 'category', 'due_at', 'completed_at', 'archived_at'])
       .subscribe((all) => {
         // Filter out archived tasks (done > 7 days ago)
         const sevenDaysAgo = Date.now() - 7 * 86400000;
