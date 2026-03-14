@@ -37,6 +37,10 @@ export function useAI() {
     return decomposed;
   }, []);
 
+  const cancel = useCallback(() => {
+    engine.current.cancelGeneration();
+  }, []);
+
   const clearResult = useCallback(() => setResult(null), []);
 
   return {
@@ -44,6 +48,7 @@ export function useAI() {
     result,
     initModel,
     decompose,
+    cancel,
     clearResult,
     isReady: state.status === 'ready',
     isLoading: state.status === 'loading',

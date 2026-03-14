@@ -21,6 +21,8 @@ class NativeAIEngine implements AIEngine {
     return false;
   }
 
+  cancelGeneration(): void {}
+
   async init(): Promise<void> {
     // No-op on native until we add llama.rn or executorch
   }

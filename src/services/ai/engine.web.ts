@@ -1,7 +1,7 @@
 import { Wllama } from '@wllama/wllama/esm';
 import { AIEngine, AIEngineState, DecomposedTask, SYSTEM_PROMPT, TASK_CATEGORIES } from './types';
 
-// Qwen 2.5 0.5B — small enough for fast WASM single-thread inference (~400 MB)
+// Qwen 2.5 0.5B — small enough for fast WASM single-thread inference (~530 MB)
 const MODEL_REPO = 'Qwen/Qwen2.5-0.5B-Instruct-GGUF';
 const MODEL_FILE = 'qwen2.5-0.5b-instruct-q8_0.gguf';
 
@@ -25,6 +25,7 @@ class WllamaEngine implements AIEngine {
   private state: AIEngineState = { ...INITIAL_STATE };
   private listeners = new Set<(state: AIEngineState) => void>();
   private thinkingTimer: ReturnType<typeof setInterval> | null = null;
+  private abortController: AbortController | null = null;
 
   getState(): AIEngineState {
     return this.state;
@@ -59,13 +60,26 @@ class WllamaEngine implements AIEngine {
     return this.state.status === 'ready';
   }
 
+  cancelGeneration(): void {
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+    }
+    this.stopThinkingTimer();
+    this.setState({
+      status: 'ready',
+      statusMessage: 'Cancelled',
+      partialOutput: '',
+      tokensGenerated: 0,
+    });
+  }
+
   async init(): Promise<void> {
     if (this.state.status === 'ready' || this.state.status === 'loading') return;
 
     this.setState({ status: 'loading', loadProgress: 0, error: null, statusMessage: 'Initializing WASM runtime...' });
 
     try {
-      // Single-thread only — multi-thread needs COOP/COEP headers
       const wasmPaths = {
         'single-thread/wllama.wasm': '/wllama/single-thread.wasm',
       };
@@ -95,7 +109,7 @@ class WllamaEngine implements AIEngine {
       this.setState({
         status: 'ready',
         loadProgress: 1,
-        statusMessage: 'Model loaded — ready to decompose ideas',
+        statusMessage: 'Model loaded',
       });
     } catch (err: any) {
       this.setState({
@@ -110,6 +124,8 @@ class WllamaEngine implements AIEngine {
   async decomposeIdea(text: string): Promise<DecomposedTask> {
     if (!this.wllama) throw new Error('AI engine not initialized');
 
+    this.abortController = new AbortController();
+
     this.setState({
       status: 'generating',
       statusMessage: 'Processing prompt... 0s',
@@ -120,7 +136,6 @@ class WllamaEngine implements AIEngine {
     this.startThinkingTimer();
 
     try {
-      const grammar = buildJsonGrammar();
       let tokenCount = 0;
       let firstTokenTime: number | null = null;
       const startTime = Date.now();
@@ -135,9 +150,9 @@ class WllamaEngine implements AIEngine {
           sampling: {
             temp: 0.3,
             top_p: 0.9,
-            grammar,
           },
           useCache: false,
+          abortSignal: this.abortController.signal,
           onNewToken: (_token: number, _piece: Uint8Array, currentText: string) => {
             if (tokenCount === 0) {
               this.stopThinkingTimer();
@@ -158,15 +173,19 @@ class WllamaEngine implements AIEngine {
       );
 
       this.stopThinkingTimer();
+      this.abortController = null;
 
       const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      const parsed = JSON.parse(result);
+
+      // Extract JSON from the response — model may wrap it in markdown
+      const jsonStr = extractJson(result);
+      const parsed = JSON.parse(jsonStr);
       const sanitized = this.sanitize(parsed);
       const subtaskCount = sanitized.subtasks.length;
 
       this.setState({
         status: 'ready',
-        statusMessage: `Done in ${totalElapsed}s — ${sanitized.title} + ${subtaskCount} subtask${subtaskCount !== 1 ? 's' : ''}`,
+        statusMessage: `Done in ${totalElapsed}s — ${subtaskCount} subtask${subtaskCount !== 1 ? 's' : ''}`,
         tokensGenerated: tokenCount,
         partialOutput: '',
       });
@@ -174,6 +193,14 @@ class WllamaEngine implements AIEngine {
       return sanitized;
     } catch (err: any) {
       this.stopThinkingTimer();
+      this.abortController = null;
+
+      // Don't show error for user-initiated cancellation
+      if (err?.name === 'AbortError' || err?.message?.includes('abort')) {
+        this.setState({ status: 'ready', statusMessage: 'Cancelled' });
+        throw err;
+      }
+
       this.setState({
         status: 'ready',
         statusMessage: `Generation failed: ${err?.message}`,
@@ -201,19 +228,17 @@ class WllamaEngine implements AIEngine {
   }
 }
 
-/**
- * GBNF grammar that constrains output to our exact JSON schema.
- */
-function buildJsonGrammar(): string {
-  return String.raw`
-root ::= "{" ws "\"title\"" ws ":" ws string "," ws "\"category\"" ws ":" ws category "," ws "\"priority\"" ws ":" ws priority "," ws "\"estimatedMinutes\"" ws ":" ws number "," ws "\"subtasks\"" ws ":" ws "[" ws subtask ("," ws subtask)* ws "]" ws "}"
-category ::= "\"private\"" | "\"school\"" | "\"work\"" | "\"health\"" | "\"finance\"" | "\"other\""
-priority ::= "\"high\"" | "\"medium\"" | "\"low\""
-subtask ::= "{" ws "\"title\"" ws ":" ws string "," ws "\"estimatedMinutes\"" ws ":" ws number ws "}"
-string ::= "\"" ([^"\\] | "\\" .)* "\""
-number ::= [0-9]+
-ws ::= [ \t\n]*
-`.trim();
+/** Pull the first {...} JSON object out of the model's response */
+function extractJson(text: string): string {
+  const start = text.indexOf('{');
+  if (start === -1) throw new Error('No JSON found in response');
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') depth--;
+    if (depth === 0) return text.slice(start, i + 1);
+  }
+  throw new Error('Incomplete JSON in response');
 }
 
 export function createEngine(): AIEngine {

@@ -24,6 +24,7 @@ export interface AIEngine {
   onStateChange(listener: (state: AIEngineState) => void): () => void;
   init(): Promise<void>;
   decomposeIdea(text: string): Promise<DecomposedTask>;
+  cancelGeneration(): void;
   isReady(): boolean;
 }
 

@@ -170,7 +170,7 @@ export function AddTaskScreen() {
         {/* AI status panel — always visible when AI is doing something */}
         {Platform.OS === 'web' && (ai.isLoading || ai.isGenerating || ai.status === 'error' || aiError) && (
           <View style={styles.aiPanel}>
-            {/* Status dot + message */}
+            {/* Status dot + message + cancel */}
             <View style={styles.aiPanelHeader}>
               <View style={[
                 styles.aiDot,
@@ -181,6 +181,15 @@ export function AddTaskScreen() {
               <Text style={styles.aiPanelMessage} numberOfLines={2}>
                 {aiError ?? ai.statusMessage}
               </Text>
+              {(ai.isGenerating || ai.isLoading) && (
+                <TouchableOpacity
+                  style={styles.aiCancelBtn}
+                  onPress={() => { ai.cancel(); setAiError(null); }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.aiCancelText}>{'\u2715'} Stop</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Progress bar for loading */}
@@ -414,6 +423,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#4C1D95',
+  },
+  aiCancelBtn: {
+    backgroundColor: '#EDE9FE',
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+  },
+  aiCancelText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6D28D9',
   },
   aiProgressBar: {
     height: 4,
