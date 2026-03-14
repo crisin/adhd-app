@@ -1,20 +1,14 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { DatabaseProvider } from '@nozbe/watermelondb/react';
+import { database } from './src/db';
+import { TodayScreen } from './src/screens/TodayScreen';
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <DatabaseProvider database={database}>
+      <StatusBar style="dark" />
+      {/* Entry point — TodayScreen is the home screen */}
+      <TodayScreen />
+    </DatabaseProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

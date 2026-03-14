@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "tadihd-temp",
-    "slug": "tadihd-temp",
+    "name": "TadiHD",
+    "slug": "tadihd",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
