@@ -53,14 +53,6 @@ export async function updateTaskStatus(task: Task, status: TaskStatus): Promise<
       t.status = status;
       if (status === 'done') t.completedAt = new Date();
     });
-
-    // If this is a plant-reminder task being completed, auto-water the plant
-    if (status === 'done' && task.source === 'plant-reminder' && task.plantId) {
-      const plant = await database.get<Plant>('plants').find(task.plantId);
-      await plant.update((p) => {
-        p.lastWateredAt = Date.now();
-      });
-    }
   });
 }
 
@@ -474,7 +466,7 @@ export async function waterPlantAndSchedule(plant: Plant): Promise<void> {
       p.lastWateredAt = now;
     });
 
-    // Create calendar event for next watering
+    // Create calendar event for next watering (plant reminders live on calendar only)
     const nextWaterDate = now + plant.wateringIntervalDays * 86400000;
     await database.get<CalendarEvent>('calendar_events').create((e) => {
       e.title = `Water ${plant.name}`;
@@ -482,17 +474,6 @@ export async function waterPlantAndSchedule(plant: Plant): Promise<void> {
       e.allDay = true;
       e.source = 'plant-reminder';
       e.plantId = plant.id;
-    });
-
-    // Create a plant-reminder task for next watering
-    await database.get<Task>('tasks').create((t) => {
-      t.title = `Water ${plant.name}`;
-      t.status = 'backlog';
-      t.priority = 'medium';
-      t.source = 'plant-reminder';
-      t.plantId = plant.id;
-      t.dueAt = nextWaterDate;
-      t.sortOrder = nextWaterDate;
     });
   });
 }

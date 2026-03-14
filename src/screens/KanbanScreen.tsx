@@ -53,6 +53,7 @@ function useAllActiveTasks(filterCategory: TaskCategory | null) {
         const sevenDaysAgo = Date.now() - 7 * 86400000;
         const filtered = all.filter((t) => {
           if (t.archivedAt) return false;
+          if (t.source === 'plant-reminder') return false;
           if (t.status === 'done' && t.completedAt && t.completedAt.getTime() < sevenDaysAgo) return false;
           return true;
         });
