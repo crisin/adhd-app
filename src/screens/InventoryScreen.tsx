@@ -17,6 +17,7 @@ import { useInventoryItems } from '../hooks/useInventoryItems';
 import { createInventoryItem, updateInventoryItem, deleteInventoryItem } from '../db/actions';
 import { InventoryItem, InventoryRoom } from '../db/models/InventoryItem';
 import { LocationPicker } from '../components/LocationPicker';
+import { confirmDelete } from '../utils/confirm';
 import { colors, spacing, radius } from '../theme/tokens';
 
 // ─── Room config ──────────────────────────────────────────────────────────────
@@ -289,6 +290,8 @@ export function InventoryScreen() {
   const [editing, setEditing] = useState<InventoryItem | null>(null);
 
   const handleDelete = useCallback(async (item: InventoryItem) => {
+    const ok = await confirmDelete('Delete Item', `Remove "${item.name}"? This cannot be undone.`);
+    if (!ok) return;
     await deleteInventoryItem(item);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, []);

@@ -18,6 +18,7 @@ import { usePlants } from '../hooks/usePlants';
 import { createPlant, updatePlant, waterPlantAndSchedule, deletePlant } from '../db/actions';
 import { Plant } from '../db/models/Plant';
 import { LocationPicker } from '../components/LocationPicker';
+import { confirmDelete } from '../utils/confirm';
 import { colors, spacing, radius } from '../theme/tokens';
 
 // ─── Watering status config ───────────────────────────────────────────────────
@@ -345,6 +346,8 @@ export function PlantsScreen() {
   }, []);
 
   const handleDelete = useCallback(async (plant: Plant) => {
+    const ok = await confirmDelete('Delete Plant', `Remove "${plant.name}"? This cannot be undone.`);
+    if (!ok) return;
     await deletePlant(plant);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, []);
@@ -388,6 +391,7 @@ export function PlantsScreen() {
           keyExtractor={(item) => item.id}
           numColumns={numCols}
           key={numCols} // force re-render when column count changes
+          extraData={plants}
           contentContainerStyle={[styles.grid, { padding: GUTTER }]}
           columnWrapperStyle={numCols > 1 ? { gap: GUTTER } : undefined}
           ItemSeparatorComponent={() => <View style={{ height: GUTTER }} />}

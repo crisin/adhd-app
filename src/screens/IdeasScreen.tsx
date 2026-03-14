@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { confirmDelete } from '../utils/confirm';
 import { useIdeas } from '../hooks/useIdeas';
 import { createIdea, deleteIdea, ideaToTask, markIdeaProcessed } from '../db/actions';
 import { Idea } from '../db/models/Idea';
@@ -47,6 +48,8 @@ export function IdeasScreen() {
   }, []);
 
   const handleDiscard = useCallback(async (idea: Idea) => {
+    const ok = await confirmDelete('Discard Idea', 'Remove this idea? This cannot be undone.');
+    if (!ok) return;
     await deleteIdea(idea);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setExpandedId(null);

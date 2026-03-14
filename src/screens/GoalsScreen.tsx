@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
+import { confirmDelete } from '../utils/confirm';
 import { useGoals } from '../hooks/useGoals';
 import { useTasksForGoal } from '../hooks/useTasksForGoal';
 import { createGoal, updateGoalStatus, deleteGoal } from '../db/actions';
@@ -185,6 +186,8 @@ export function GoalsScreen() {
   }, []);
 
   const handleDelete = useCallback(async (goal: Goal) => {
+    const ok = await confirmDelete('Delete Goal', `Remove "${goal.title}"? This cannot be undone.`);
+    if (!ok) return;
     await deleteGoal(goal);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, []);

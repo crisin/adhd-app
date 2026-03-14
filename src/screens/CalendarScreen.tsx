@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { confirmDelete } from '../utils/confirm';
 import { colors, spacing, radius, typography } from '../theme/tokens';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
 import { CalendarEvent } from '../db/models/CalendarEvent';
@@ -468,7 +469,9 @@ function DayView({
             {isExpanded && event.source === 'manual' ? (
               <TouchableOpacity
                 style={styles.deleteBtn}
-                onPress={() => {
+                onPress={async () => {
+                  const ok = await confirmDelete('Delete Event', `Remove "${event.title}"? This cannot be undone.`);
+                  if (!ok) return;
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
                   onDelete(event);
                 }}

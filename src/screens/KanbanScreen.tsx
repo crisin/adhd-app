@@ -11,6 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { confirmDelete } from '../utils/confirm';
 import { useDatabase } from '@nozbe/watermelondb/react';
 import { Q } from '@nozbe/watermelondb';
 import { updateTaskStatus, deleteTask } from '../db/actions';
@@ -206,6 +207,8 @@ export function KanbanScreen() {
   }, []);
 
   const handleDelete = useCallback(async (task: Task) => {
+    const ok = await confirmDelete('Delete Task', `Remove "${task.title}"? This cannot be undone.`);
+    if (!ok) return;
     await deleteTask(task);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, []);

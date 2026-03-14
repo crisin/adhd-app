@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
+import { confirmDelete } from '../utils/confirm';
 import { useTodayTasks } from '../hooks/useTodayTasks';
 import { useBacklogTasks } from '../hooks/useBacklogTasks';
 import { updateTaskStatus, deleteTask, updateTaskTitle } from '../db/actions';
@@ -164,10 +165,13 @@ export function BacklogScreen() {
         await updateTaskStatus(task, 'done');
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         break;
-      case 'delete':
+      case 'delete': {
+        const ok = await confirmDelete('Delete Task', `Remove "${task.title}"? This cannot be undone.`);
+        if (!ok) return;
         await deleteTask(task);
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         break;
+      }
     }
   }, []);
 

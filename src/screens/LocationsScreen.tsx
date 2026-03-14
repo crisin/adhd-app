@@ -15,6 +15,7 @@ import * as Haptics from 'expo-haptics';
 import { useRooms } from '../hooks/useRooms';
 import { createRoom, updateRoom, deleteRoom, getRoomPath } from '../db/actions';
 import { Room } from '../db/models/Room';
+import { confirmDelete } from '../utils/confirm';
 import { colors, spacing, radius } from '../theme/tokens';
 
 const EMOJI_PRESETS = ['🏠', '🛋', '🍳', '🛏', '💻', '🚿', '🔧', '🌿', '📦', '🚗', '🏢', '🎮'];
@@ -119,9 +120,16 @@ function LocationModal({
   onSave: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const [name, setName] = useState(editingRoom?.name ?? '');
-  const [emoji, setEmoji] = useState(editingRoom?.emoji ?? '');
+  const [name, setName] = useState('');
+  const [emoji, setEmoji] = useState('');
   const [saving, setSaving] = useState(false);
+
+  React.useEffect(() => {
+    if (visible) {
+      setName(editingRoom?.name ?? '');
+      setEmoji(editingRoom?.emoji ?? '');
+    }
+  }, [visible, editingRoom]);
 
   const parentRoom = parentId ? allRooms.find((r) => r.id === parentId) : null;
   const parentPath = parentRoom ? getRoomPath(parentRoom, allRooms) : null;
@@ -217,6 +225,8 @@ export function LocationsScreen() {
   }, []);
 
   const handleDelete = useCallback(async (room: Room) => {
+    const ok = await confirmDelete('Delete Location', `Remove "${room.name}"? Items in this location will be unassigned.`);
+    if (!ok) return;
     await deleteRoom(room);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, []);
