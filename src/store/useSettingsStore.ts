@@ -29,11 +29,13 @@ interface SettingsStore {
   workDuration: number;
   transitionWarning: number;
   calendarColors: Record<CalendarSourceKey, string>;
+  notificationsEnabled: boolean;
 
   setWorkDuration: (min: number) => void;
   setTransitionWarning: (min: number) => void;
   setCalendarColor: (source: CalendarSourceKey, color: string) => void;
   resetCalendarColors: () => void;
+  setNotificationsEnabled: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -42,9 +44,11 @@ export const useSettingsStore = create<SettingsStore>()(
       workDuration: 25,
       transitionWarning: 3,
       calendarColors: { ...DEFAULT_CALENDAR_COLORS },
+      notificationsEnabled: false,
 
       setWorkDuration: (workDuration) => set({ workDuration }),
       setTransitionWarning: (transitionWarning) => set({ transitionWarning }),
+      setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       setCalendarColor: (source, color) =>
         set((state) => ({
           calendarColors: { ...state.calendarColors, [source]: color },

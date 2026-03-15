@@ -11,12 +11,15 @@ import {
   Pressable,
   ActivityIndicator,
   Platform,
+  Switch,
+  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useDatabase } from '@nozbe/watermelondb/react';
 import { Q } from '@nozbe/watermelondb';
 import * as Haptics from 'expo-haptics';
+import { sendTestNotification, requestNotificationPermission } from '../services/notifications';
 import {
   useSettingsStore,
   CalendarSourceKey,
@@ -214,12 +217,46 @@ function AISection() {
 
 export function SettingsScreen() {
   const {
-    workDuration, transitionWarning, calendarColors,
+    workDuration, transitionWarning, calendarColors, notificationsEnabled,
     setWorkDuration, setTransitionWarning, setCalendarColor, resetCalendarColors,
+    setNotificationsEnabled,
   } = useSettingsStore();
   const db = useDatabase();
 
   const [editingSource, setEditingSource] = useState<CalendarSourceKey | null>(null);
+  const [testSending, setTestSending] = useState(false);
+
+  const handleToggleNotifications = async (enabled: boolean) => {
+    if (enabled) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        Alert.alert(
+          'Permission Required',
+          'Please enable notifications in your device settings to receive alerts for timers, events, and tasks.',
+        );
+        return;
+      }
+    }
+    setNotificationsEnabled(enabled);
+    Haptics.selectionAsync();
+  };
+
+  const handleTestNotification = async () => {
+    setTestSending(true);
+    try {
+      const sent = await sendTestNotification();
+      if (!sent) {
+        Alert.alert(
+          'Permission Required',
+          'Please enable notifications in your device settings.',
+        );
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } finally {
+      setTestSending(false);
+    }
+  };
 
   const handleExport = async () => {
     try {
@@ -277,6 +314,42 @@ export function SettingsScreen() {
               ))}
             </View>
           </Row>
+        </View>
+
+        {/* Notifications */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Notifications</Text>
+
+          <View style={styles.notifRow}>
+            <View style={styles.notifInfo}>
+              <Text style={styles.notifTitle}>Enable notifications</Text>
+              <Text style={styles.notifDesc}>
+                Get alerts for timers, events, and tasks
+              </Text>
+            </View>
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={handleToggleNotifications}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={notificationsEnabled ? colors.primaryDark : '#f4f3f4'}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.testBtn, testSending && styles.testBtnDisabled]}
+            onPress={handleTestNotification}
+            activeOpacity={0.8}
+            disabled={testSending}
+          >
+            {testSending ? (
+              <ActivityIndicator size="small" color={colors.primaryDark} />
+            ) : (
+              <>
+                <Ionicons name="notifications-outline" size={18} color={colors.primaryDark} />
+                <Text style={styles.testBtnText}>Send Test Notification</Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Calendar Colors */}
@@ -407,6 +480,33 @@ const styles = StyleSheet.create({
   chipActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
   chipText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
   chipTextActive: { color: colors.primaryDark },
+
+  // Notifications
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  notifInfo: { flex: 1, marginRight: spacing.md },
+  notifTitle: { fontSize: 15, fontWeight: '500', color: colors.text },
+  notifDesc: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  testBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+  },
+  testBtnDisabled: { opacity: 0.5 },
+  testBtnText: { fontSize: 15, fontWeight: '600', color: colors.primaryDark },
 
   // Calendar color rows
   colorRow: {
