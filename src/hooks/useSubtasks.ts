@@ -1,20 +1,12 @@
-import { useDatabase } from '@nozbe/watermelondb/react';
-import { Q } from '@nozbe/watermelondb';
-import { useState, useEffect } from 'react';
-import { Subtask } from '../db/models/Subtask';
+import { usePolling } from './usePolling';
+import { api } from '../api/client';
+import { toSubtask } from '../api/mappers';
+import { SubtaskObj } from '../api/types';
 
-export function useSubtasks(taskId: string) {
-  const database = useDatabase();
-  const [subtasks, setSubtasks] = useState<Subtask[]>([]);
-
-  useEffect(() => {
-    const sub = database
-      .get<Subtask>('subtasks')
-      .query(Q.where('task_id', taskId), Q.sortBy('sort_order', Q.asc))
-      .observe()
-      .subscribe(setSubtasks);
-    return () => sub.unsubscribe();
-  }, [database, taskId]);
-
+export function useSubtasks(taskId: string): SubtaskObj[] {
+  const [subtasks] = usePolling(
+    () => api.get<any[]>(`/subtasks?task_id=${encodeURIComponent(taskId)}`).then((rows) => rows.map(toSubtask)),
+    []
+  );
   return subtasks;
 }

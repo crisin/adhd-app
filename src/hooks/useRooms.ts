@@ -1,20 +1,12 @@
-import { useDatabase } from '@nozbe/watermelondb/react';
-import { Q } from '@nozbe/watermelondb';
-import { useState, useEffect } from 'react';
-import { Room } from '../db/models/Room';
+import { usePolling } from './usePolling';
+import { api } from '../api/client';
+import { toRoom } from '../api/mappers';
+import { RoomObj } from '../api/types';
 
-export function useRooms() {
-  const database = useDatabase();
-  const [rooms, setRooms] = useState<Room[]>([]);
-
-  useEffect(() => {
-    const sub = database
-      .get<Room>('rooms')
-      .query(Q.sortBy('sort_order', Q.asc))
-      .observe()
-      .subscribe(setRooms);
-    return () => sub.unsubscribe();
-  }, [database]);
-
+export function useRooms(): RoomObj[] {
+  const [rooms] = usePolling(
+    () => api.get<any[]>('/rooms').then((rows) => rows.map(toRoom)),
+    []
+  );
   return rooms;
 }

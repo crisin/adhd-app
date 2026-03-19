@@ -1,16 +1,6 @@
-import { database } from './index';
-import { Task, TaskStatus, TaskCategory, TaskPriority, TaskSource } from './models/Task';
-import { FocusSession } from './models/FocusSession';
-import { Goal, GoalType, GoalStatus } from './models/Goal';
-import { Idea } from './models/Idea';
-import { InventoryItem, InventoryRoom } from './models/InventoryItem';
-import { Plant } from './models/Plant';
-import { Subtask } from './models/Subtask';
-import { Label } from './models/Label';
-import { TaskLabel } from './models/TaskLabel';
-import { Room } from './models/Room';
-import { CalendarEvent, CalendarEventSource } from './models/CalendarEvent';
-import { Q } from '@nozbe/watermelondb';
+import { api } from '../api/client';
+import { toTask, toGoal, toIdea, toSubtask, toLabel, toTaskLabel, toInventoryItem, toPlant, toCalendarEvent, toFocusSession, toReminder, toRoom } from '../api/mappers';
+import { TaskObj, TaskStatus, TaskCategory, TaskPriority, TaskSource, GoalObj, GoalType, GoalStatus, IdeaObj, SubtaskObj, LabelObj, TaskLabelObj, InventoryItemObj, InventoryRoom, PlantObj, CalendarEventObj, CalendarEventSource, FocusSessionObj, ReminderObj, RoomObj } from '../api/types';
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
@@ -27,37 +17,27 @@ export async function createTask(
     plantId?: string | null;
     recurrenceRule?: string | null;
   } = {}
-): Promise<Task> {
-  let newTask!: Task;
-  await database.write(async () => {
-    newTask = await database.get<Task>('tasks').create((task) => {
-      task.title = title.trim();
-      task.status = status;
-      task.estimatedMinutes = estimatedMinutes;
-      task.category = category;
-      task.goalId = goalId;
-      task.sortOrder = Date.now();
-      task.priority = opts.priority ?? 'medium';
-      task.dueAt = opts.dueAt ?? null;
-      task.source = opts.source ?? 'manual';
-      task.plantId = opts.plantId ?? null;
-      task.recurrenceRule = opts.recurrenceRule ?? null;
-    });
-  });
-  return newTask;
+): Promise<TaskObj> {
+  return api.post<any>('/tasks', {
+    title,
+    estimatedMinutes,
+    status,
+    category,
+    goalId,
+    priority: opts.priority ?? 'medium',
+    dueAt: opts.dueAt ?? null,
+    source: opts.source ?? 'manual',
+    plantId: opts.plantId ?? null,
+    recurrenceRule: opts.recurrenceRule ?? null,
+  }).then(toTask);
 }
 
-export async function updateTaskStatus(task: Task, status: TaskStatus): Promise<void> {
-  await database.write(async () => {
-    await task.update((t) => {
-      t.status = status;
-      if (status === 'done') t.completedAt = new Date();
-    });
-  });
+export async function updateTaskStatus(task: { id: string }, status: TaskStatus): Promise<void> {
+  await api.patch<any>('/tasks/' + task.id, { status });
 }
 
 export async function updateTask(
-  task: Task,
+  task: { id: string },
   fields: {
     title?: string;
     notes?: string | null;
@@ -70,165 +50,72 @@ export async function updateTask(
     recurrenceRule?: string | null;
   }
 ): Promise<void> {
-  await database.write(async () => {
-    await task.update((t) => {
-      if (fields.title !== undefined) t.title = fields.title.trim();
-      if (fields.notes !== undefined) t.notes = fields.notes;
-      if (fields.status !== undefined) {
-        t.status = fields.status;
-        if (fields.status === 'done') t.completedAt = new Date();
-      }
-      if (fields.category !== undefined) t.category = fields.category;
-      if (fields.priority !== undefined) t.priority = fields.priority;
-      if (fields.dueAt !== undefined) t.dueAt = fields.dueAt;
-      if (fields.goalId !== undefined) t.goalId = fields.goalId;
-      if (fields.estimatedMinutes !== undefined) t.estimatedMinutes = fields.estimatedMinutes;
-      if (fields.recurrenceRule !== undefined) t.recurrenceRule = fields.recurrenceRule;
-    });
-  });
+  await api.patch<any>('/tasks/' + task.id, fields);
 }
 
-export async function updateTaskTitle(task: Task, title: string): Promise<void> {
-  await database.write(async () => {
-    await task.update((t) => { t.title = title.trim(); });
-  });
+export async function updateTaskTitle(task: { id: string }, title: string): Promise<void> {
+  await api.patch<any>('/tasks/' + task.id, { title });
 }
 
-export async function deleteTask(task: Task): Promise<void> {
-  await database.write(async () => {
-    // Delete associated subtasks and task-labels
-    const subtasks = await database.get<Subtask>('subtasks').query(Q.where('task_id', task.id)).fetch();
-    const taskLabels = await database.get<TaskLabel>('task_labels').query(Q.where('task_id', task.id)).fetch();
-    const batch: any[] = [
-      ...subtasks.map((s) => s.prepareDestroyPermanently()),
-      ...taskLabels.map((tl) => tl.prepareDestroyPermanently()),
-      task.prepareDestroyPermanently(),
-    ];
-    await database.batch(...batch);
-  });
+export async function deleteTask(task: { id: string }): Promise<void> {
+  await api.delete<any>('/tasks/' + task.id);
 }
 
-export async function archiveTask(task: Task): Promise<void> {
-  await database.write(async () => {
-    await task.update((t) => {
-      t.archivedAt = new Date();
-    });
-  });
+export async function archiveTask(task: { id: string }): Promise<void> {
+  await api.post<any>('/tasks/' + task.id + '/archive', {});
 }
 
-export async function startFocusSession(task: Task, plannedMinutes: number): Promise<FocusSession> {
-  let session!: FocusSession;
-  await database.write(async () => {
-    await task.update((t) => { t.status = 'active'; });
-    session = await database.get<FocusSession>('focus_sessions').create((s) => {
-      (s as any)._raw.task_id = task.id;
-      s.plannedMinutes = plannedMinutes;
-      s.completed = false;
-    });
-  });
-  return session;
+export async function startFocusSession(task: { id: string }, plannedMinutes: number): Promise<FocusSessionObj> {
+  const result = await api.post<any>('/tasks/' + task.id + '/focus-start', { plannedMinutes });
+  return toFocusSession(result.session);
 }
 
 export async function endFocusSession(
-  session: FocusSession,
-  task: Task,
+  session: { id: string },
+  task: { id: string },
   completed: boolean
 ): Promise<void> {
-  await database.write(async () => {
-    await session.update((s) => {
-      s.endedAt = new Date();
-      s.completed = completed;
-    });
-    await task.update((t) => {
-      t.status = completed ? 'done' : 'today';
-      if (completed) t.completedAt = new Date();
-    });
-  });
+  await api.post<any>('/tasks/' + task.id + '/focus-end', { sessionId: session.id, completed });
 }
 
 // ─── Subtasks ─────────────────────────────────────────────────────────────────
 
-export async function createSubtask(taskId: string, title: string): Promise<Subtask> {
-  let subtask!: Subtask;
-  await database.write(async () => {
-    subtask = await database.get<Subtask>('subtasks').create((s) => {
-      s.taskId = taskId;
-      s.title = title.trim();
-      s.done = false;
-      s.sortOrder = Date.now();
-    });
-  });
-  return subtask;
+export async function createSubtask(taskId: string, title: string): Promise<SubtaskObj> {
+  return api.post<any>('/subtasks', { taskId, title }).then(toSubtask);
 }
 
-export async function toggleSubtask(subtask: Subtask): Promise<void> {
-  await database.write(async () => {
-    await subtask.update((s) => { s.done = !s.done; });
-  });
+export async function toggleSubtask(subtask: { id: string; done: boolean }): Promise<void> {
+  await api.patch<any>('/subtasks/' + subtask.id, { done: !subtask.done });
 }
 
-export async function updateSubtaskTitle(subtask: Subtask, title: string): Promise<void> {
-  await database.write(async () => {
-    await subtask.update((s) => { s.title = title.trim(); });
-  });
+export async function updateSubtaskTitle(subtask: { id: string }, title: string): Promise<void> {
+  await api.patch<any>('/subtasks/' + subtask.id, { title });
 }
 
-export async function deleteSubtask(subtask: Subtask): Promise<void> {
-  await database.write(async () => { await subtask.destroyPermanently(); });
+export async function deleteSubtask(subtask: { id: string }): Promise<void> {
+  await api.delete<any>('/subtasks/' + subtask.id);
 }
 
 // ─── Labels ───────────────────────────────────────────────────────────────────
 
-export async function createLabel(name: string, color: string): Promise<Label> {
-  let label!: Label;
-  await database.write(async () => {
-    label = await database.get<Label>('labels').create((l) => {
-      l.name = name.trim();
-      l.color = color;
-    });
-  });
-  return label;
+export async function createLabel(name: string, color: string): Promise<LabelObj> {
+  return api.post<any>('/labels', { name, color }).then(toLabel);
 }
 
-export async function updateLabel(label: Label, fields: { name?: string; color?: string }): Promise<void> {
-  await database.write(async () => {
-    await label.update((l) => {
-      if (fields.name !== undefined) l.name = fields.name.trim();
-      if (fields.color !== undefined) l.color = fields.color;
-    });
-  });
+export async function updateLabel(label: { id: string }, fields: { name?: string; color?: string }): Promise<void> {
+  await api.patch<any>('/labels/' + label.id, fields);
 }
 
-export async function deleteLabel(label: Label): Promise<void> {
-  await database.write(async () => {
-    const taskLabels = await database.get<TaskLabel>('task_labels').query(Q.where('label_id', label.id)).fetch();
-    const batch: any[] = [
-      ...taskLabels.map((tl) => tl.prepareDestroyPermanently()),
-      label.prepareDestroyPermanently(),
-    ];
-    await database.batch(...batch);
-  });
+export async function deleteLabel(label: { id: string }): Promise<void> {
+  await api.delete<any>('/labels/' + label.id);
 }
 
-export async function addLabelToTask(taskId: string, labelId: string): Promise<TaskLabel> {
-  let tl!: TaskLabel;
-  await database.write(async () => {
-    tl = await database.get<TaskLabel>('task_labels').create((r) => {
-      r.taskId = taskId;
-      r.labelId = labelId;
-    });
-  });
-  return tl;
+export async function addLabelToTask(taskId: string, labelId: string): Promise<TaskLabelObj> {
+  return api.post<any>('/task-labels', { taskId, labelId }).then(toTaskLabel);
 }
 
 export async function removeLabelFromTask(taskId: string, labelId: string): Promise<void> {
-  await database.write(async () => {
-    const tls = await database.get<TaskLabel>('task_labels')
-      .query(Q.where('task_id', taskId), Q.where('label_id', labelId))
-      .fetch();
-    const batch = tls.map((tl) => tl.prepareDestroyPermanently());
-    await database.batch(...batch);
-  });
+  await api.delete<any>(`/task-labels?task_id=${encodeURIComponent(taskId)}&label_id=${encodeURIComponent(labelId)}`);
 }
 
 // ─── Goals ────────────────────────────────────────────────────────────────────
@@ -239,76 +126,44 @@ export async function createGoal(
   description: string | null = null,
   category: TaskCategory | null = null,
   targetDate: Date | null = null
-): Promise<Goal> {
-  let goal!: Goal;
-  await database.write(async () => {
-    goal = await database.get<Goal>('goals').create((g) => {
-      g.title = title.trim();
-      g.type = type;
-      g.description = description;
-      g.category = category;
-      g.targetDate = targetDate;
-      g.status = 'active';
-      g.sortOrder = Date.now();
-    });
-  });
-  return goal;
+): Promise<GoalObj> {
+  return api.post<any>('/goals', {
+    title,
+    type,
+    description,
+    category,
+    targetDate: targetDate ? targetDate.getTime() : null,
+  }).then(toGoal);
 }
 
-export async function updateGoalStatus(goal: Goal, status: GoalStatus): Promise<void> {
-  await database.write(async () => {
-    await goal.update((g) => {
-      g.status = status;
-      if (status === 'done') g.completedAt = new Date();
-    });
-  });
+export async function updateGoalStatus(goal: { id: string }, status: GoalStatus): Promise<void> {
+  await api.patch<any>('/goals/' + goal.id, { status });
 }
 
-export async function deleteGoal(goal: Goal): Promise<void> {
-  await database.write(async () => { await goal.destroyPermanently(); });
+export async function deleteGoal(goal: { id: string }): Promise<void> {
+  await api.delete<any>('/goals/' + goal.id);
 }
 
 // ─── Ideas ────────────────────────────────────────────────────────────────────
 
-export async function createIdea(content: string): Promise<Idea> {
-  let idea!: Idea;
-  await database.write(async () => {
-    idea = await database.get<Idea>('ideas').create((i) => {
-      i.content = content.trim();
-      i.processed = false;
-    });
-  });
-  return idea;
+export async function createIdea(content: string): Promise<IdeaObj> {
+  return api.post<any>('/ideas', { content }).then(toIdea);
 }
 
-export async function markIdeaProcessed(idea: Idea): Promise<void> {
-  await database.write(async () => {
-    await idea.update((i) => { i.processed = true; });
-  });
+export async function markIdeaProcessed(idea: { id: string }): Promise<void> {
+  await api.patch<any>('/ideas/' + idea.id, { processed: true });
 }
 
-export async function deleteIdea(idea: Idea): Promise<void> {
-  await database.write(async () => { await idea.destroyPermanently(); });
+export async function deleteIdea(idea: { id: string }): Promise<void> {
+  await api.delete<any>('/ideas/' + idea.id);
 }
 
 export async function ideaToTask(
-  idea: Idea,
+  idea: { id: string },
   status: TaskStatus = 'today',
   category: TaskCategory | null = null
-): Promise<Task> {
-  let task!: Task;
-  await database.write(async () => {
-    task = await database.get<Task>('tasks').create((t) => {
-      t.title = idea.content.trim();
-      t.status = status;
-      t.category = category;
-      t.sortOrder = Date.now();
-      t.priority = 'medium';
-      t.source = 'idea-dump';
-    });
-    await idea.update((i) => { i.processed = true; });
-  });
-  return task;
+): Promise<TaskObj> {
+  return api.post<any>('/ideas/' + idea.id + '/to-task', { status, category }).then(toTask);
 }
 
 // ─── Rooms ────────────────────────────────────────────────────────────────────
@@ -318,36 +173,19 @@ export async function createRoom(
   emoji: string | null = null,
   color: string | null = null,
   parentId: string | null = null
-): Promise<Room> {
-  let room!: Room;
-  await database.write(async () => {
-    room = await database.get<Room>('rooms').create((r) => {
-      r.name = name.trim();
-      r.emoji = emoji;
-      r.color = color;
-      r.sortOrder = Date.now();
-      r.parentId = parentId;
-    });
-  });
-  return room;
+): Promise<RoomObj> {
+  return api.post<any>('/rooms', { name, emoji, color, parentId }).then(toRoom);
 }
 
-export async function updateRoom(room: Room, fields: { name?: string; emoji?: string | null; color?: string | null; parentId?: string | null }): Promise<void> {
-  await database.write(async () => {
-    await room.update((r) => {
-      if (fields.name !== undefined) r.name = fields.name.trim();
-      if (fields.emoji !== undefined) r.emoji = fields.emoji;
-      if (fields.color !== undefined) r.color = fields.color;
-      if (fields.parentId !== undefined) r.parentId = fields.parentId;
-    });
-  });
+export async function updateRoom(room: { id: string }, fields: { name?: string; emoji?: string | null; color?: string | null; parentId?: string | null }): Promise<void> {
+  await api.patch<any>('/rooms/' + room.id, fields);
 }
 
 /** Build breadcrumb path for a room: "Home > Living Room > Shelf" */
-export function getRoomPath(room: Room, allRooms: Room[]): string {
+export function getRoomPath(room: RoomObj, allRooms: RoomObj[]): string {
   const parts: string[] = [];
   const roomMap = new Map(allRooms.map((r) => [r.id, r]));
-  let current: Room | undefined = room;
+  let current: RoomObj | undefined = room;
   while (current) {
     parts.unshift(current.emoji ? `${current.emoji} ${current.name}` : current.name);
     current = current.parentId ? roomMap.get(current.parentId) : undefined;
@@ -355,18 +193,8 @@ export function getRoomPath(room: Room, allRooms: Room[]): string {
   return parts.join(' > ');
 }
 
-export async function deleteRoom(room: Room): Promise<void> {
-  await database.write(async () => {
-    // Move inventory items in this room to unsorted (null room_id)
-    const items = await database.get<InventoryItem>('inventory_items').query(Q.where('room_id', room.id)).fetch();
-    const plants = await database.get<Plant>('plants').query(Q.where('room_id', room.id)).fetch();
-    const batch: any[] = [
-      ...items.map((i) => i.prepareUpdate((rec) => { rec.roomId = null; })),
-      ...plants.map((p) => p.prepareUpdate((rec) => { rec.roomId = null; })),
-      room.prepareDestroyPermanently(),
-    ];
-    await database.batch(...batch);
-  });
+export async function deleteRoom(room: { id: string }): Promise<void> {
+  await api.delete<any>('/rooms/' + room.id);
 }
 
 // ─── Inventory ────────────────────────────────────────────────────────────────
@@ -378,24 +206,12 @@ export async function createInventoryItem(
   quantity: number = 1,
   notes: string | null = null,
   roomId: string | null = null
-): Promise<InventoryItem> {
-  let item!: InventoryItem;
-  await database.write(async () => {
-    item = await database.get<InventoryItem>('inventory_items').create((i) => {
-      i.name = name.trim();
-      i.room = room;
-      i.location = location ? location.trim() : null;
-      i.quantity = quantity;
-      i.notes = notes ? notes.trim() : null;
-      i.updatedAt = new Date();
-      i.roomId = roomId;
-    });
-  });
-  return item;
+): Promise<InventoryItemObj> {
+  return api.post<any>('/inventory', { name, room, location, quantity, notes, roomId }).then(toInventoryItem);
 }
 
 export async function updateInventoryItem(
-  item: InventoryItem,
+  item: { id: string },
   fields: {
     name?: string;
     room?: InventoryRoom;
@@ -405,21 +221,11 @@ export async function updateInventoryItem(
     roomId?: string | null;
   }
 ): Promise<void> {
-  await database.write(async () => {
-    await item.update((i) => {
-      if (fields.name !== undefined) i.name = fields.name.trim();
-      if (fields.room !== undefined) i.room = fields.room;
-      if (fields.location !== undefined) i.location = fields.location;
-      if (fields.quantity !== undefined) i.quantity = fields.quantity;
-      if (fields.notes !== undefined) i.notes = fields.notes;
-      if (fields.roomId !== undefined) i.roomId = fields.roomId;
-      i.updatedAt = new Date();
-    });
-  });
+  await api.patch<any>('/inventory/' + item.id, fields);
 }
 
-export async function deleteInventoryItem(item: InventoryItem): Promise<void> {
-  await database.write(async () => { await item.destroyPermanently(); });
+export async function deleteInventoryItem(item: { id: string }): Promise<void> {
+  await api.delete<any>('/inventory/' + item.id);
 }
 
 // ─── Plants ───────────────────────────────────────────────────────────────────
@@ -431,24 +237,12 @@ export async function createPlant(
   location: string | null = null,
   notes: string | null = null,
   roomId: string | null = null
-): Promise<Plant> {
-  let plant!: Plant;
-  await database.write(async () => {
-    plant = await database.get<Plant>('plants').create((p) => {
-      p.name = name.trim();
-      p.species = species ? species.trim() : null;
-      p.wateringIntervalDays = wateringIntervalDays;
-      p.lastWateredAt = null;
-      p.location = location ? location.trim() : null;
-      p.notes = notes ? notes.trim() : null;
-      p.roomId = roomId;
-    });
-  });
-  return plant;
+): Promise<PlantObj> {
+  return api.post<any>('/plants', { name, wateringIntervalDays, species, location, notes, roomId }).then(toPlant);
 }
 
 export async function updatePlant(
-  plant: Plant,
+  plant: { id: string },
   fields: {
     name?: string;
     species?: string | null;
@@ -458,59 +252,19 @@ export async function updatePlant(
     roomId?: string | null;
   }
 ): Promise<void> {
-  await database.write(async () => {
-    await plant.update((p) => {
-      if (fields.name !== undefined) p.name = fields.name.trim();
-      if (fields.species !== undefined) p.species = fields.species;
-      if (fields.wateringIntervalDays !== undefined) p.wateringIntervalDays = fields.wateringIntervalDays;
-      if (fields.location !== undefined) p.location = fields.location;
-      if (fields.notes !== undefined) p.notes = fields.notes;
-      if (fields.roomId !== undefined) p.roomId = fields.roomId;
-    });
-  });
+  await api.patch<any>('/plants/' + plant.id, fields);
 }
 
-export async function waterPlant(plant: Plant): Promise<void> {
-  await database.write(async () => {
-    await plant.update((p) => {
-      p.lastWateredAt = Date.now();
-    });
-  });
+export async function waterPlant(plant: { id: string }): Promise<void> {
+  await api.post<any>('/plants/' + plant.id + '/water', {});
 }
 
-export async function waterPlantAndSchedule(plant: Plant): Promise<void> {
-  await database.write(async () => {
-    const now = Date.now();
-    await plant.update((p) => {
-      p.lastWateredAt = now;
-    });
-
-    // Create calendar event for next watering (plant reminders live on calendar only)
-    const nextWaterDate = now + plant.wateringIntervalDays * 86400000;
-    await database.get<CalendarEvent>('calendar_events').create((e) => {
-      e.title = `Water ${plant.name}`;
-      e.startAt = nextWaterDate;
-      e.allDay = true;
-      e.source = 'plant-reminder';
-      e.plantId = plant.id;
-    });
-  });
+export async function waterPlantAndSchedule(plant: { id: string }): Promise<void> {
+  await api.post<any>('/plants/' + plant.id + '/water-schedule', {});
 }
 
-export async function deletePlant(plant: Plant): Promise<void> {
-  await database.write(async () => {
-    // Clean up associated calendar events and tasks
-    const events = await database.get<CalendarEvent>('calendar_events').query(Q.where('plant_id', plant.id)).fetch();
-    const tasks = await database.get<Task>('tasks')
-      .query(Q.where('plant_id', plant.id), Q.where('source', 'plant-reminder'))
-      .fetch();
-    const batch: any[] = [
-      ...events.map((e) => e.prepareDestroyPermanently()),
-      ...tasks.map((t) => t.prepareDestroyPermanently()),
-      plant.prepareDestroyPermanently(),
-    ];
-    await database.batch(...batch);
-  });
+export async function deletePlant(plant: { id: string }): Promise<void> {
+  await api.delete<any>('/plants/' + plant.id);
 }
 
 // ─── Calendar Events ──────────────────────────────────────────────────────────
@@ -528,27 +282,23 @@ export async function createCalendarEvent(
     plantId?: string | null;
     deviceEventId?: string | null;
   } = {}
-): Promise<CalendarEvent> {
-  let event!: CalendarEvent;
-  await database.write(async () => {
-    event = await database.get<CalendarEvent>('calendar_events').create((e) => {
-      e.title = title.trim();
-      e.startAt = startAt;
-      e.description = opts.description ?? null;
-      e.endAt = opts.endAt ?? null;
-      e.allDay = opts.allDay ?? false;
-      e.recurrenceRule = opts.recurrenceRule ?? null;
-      e.source = opts.source ?? 'manual';
-      e.taskId = opts.taskId ?? null;
-      e.plantId = opts.plantId ?? null;
-      e.deviceEventId = opts.deviceEventId ?? null;
-    });
-  });
-  return event;
+): Promise<CalendarEventObj> {
+  return api.post<any>('/calendar', {
+    title,
+    startAt,
+    description: opts.description ?? null,
+    endAt: opts.endAt ?? null,
+    allDay: opts.allDay ?? false,
+    recurrenceRule: opts.recurrenceRule ?? null,
+    source: opts.source ?? 'manual',
+    taskId: opts.taskId ?? null,
+    plantId: opts.plantId ?? null,
+    deviceEventId: opts.deviceEventId ?? null,
+  }).then(toCalendarEvent);
 }
 
 export async function updateCalendarEvent(
-  event: CalendarEvent,
+  event: { id: string },
   fields: {
     title?: string;
     description?: string | null;
@@ -558,18 +308,9 @@ export async function updateCalendarEvent(
     recurrenceRule?: string | null;
   }
 ): Promise<void> {
-  await database.write(async () => {
-    await event.update((e) => {
-      if (fields.title !== undefined) e.title = fields.title.trim();
-      if (fields.description !== undefined) e.description = fields.description;
-      if (fields.startAt !== undefined) e.startAt = fields.startAt;
-      if (fields.endAt !== undefined) e.endAt = fields.endAt;
-      if (fields.allDay !== undefined) e.allDay = fields.allDay;
-      if (fields.recurrenceRule !== undefined) e.recurrenceRule = fields.recurrenceRule;
-    });
-  });
+  await api.patch<any>('/calendar/' + event.id, fields);
 }
 
-export async function deleteCalendarEvent(event: CalendarEvent): Promise<void> {
-  await database.write(async () => { await event.destroyPermanently(); });
+export async function deleteCalendarEvent(event: { id: string }): Promise<void> {
+  await api.delete<any>('/calendar/' + event.id);
 }

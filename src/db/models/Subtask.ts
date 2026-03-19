@@ -1,11 +1,2 @@
-import { Model } from '@nozbe/watermelondb';
-import { field, text } from '@nozbe/watermelondb/decorators';
-
-export class Subtask extends Model {
-  static table = 'subtasks';
-
-  @field('task_id') taskId!: string;
-  @text('title') title!: string;
-  @field('done') done!: boolean;
-  @field('sort_order') sortOrder!: number;
-}
+// Stub: re-export types from API layer so existing screen imports keep working.
+export type { SubtaskObj as Subtask } from '../../api/types';

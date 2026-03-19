@@ -1,0 +1,56 @@
+services:
+  adhd-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: adhd
+      POSTGRES_USER: adhd
+      POSTGRES_PASSWORD: adhd
+    volumes:
+      - adhd_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adhd"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - adhd-internal
+
+  adhd-backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgres://adhd:adhd@adhd-postgres:5432/adhd
+      PORT: 3001
+    depends_on:
+      adhd-postgres:
+        condition: service_healthy
+    networks:
+      - adhd-internal
+
+  adhd-app:
+    build: .
+    networks:
+      - adhd-internal
+
+  adhd-proxy:
+    build: ./nginx
+    depends_on:
+      - adhd-app
+      - adhd-backend
+    networks:
+      - adhd-internal
+      - weibers-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.adhd.rule=Host(`adhd.localhost`)"
+      - "traefik.http.routers.adhd.entrypoints=web"
+      - "traefik.http.routers.adhd.middlewares=authentik-adhd@docker"
+      - "traefik.http.services.adhd.loadbalancer.server.port=80"
+      - "traefik.docker.network=weibers-net"
+
+volumes:
+  adhd_postgres_data:
+
+networks:
+  adhd-internal:
+  weibers-net:
+    external: true

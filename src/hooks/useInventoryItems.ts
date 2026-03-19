@@ -1,20 +1,15 @@
-import { useDatabase } from '@nozbe/watermelondb/react';
-import { Q } from '@nozbe/watermelondb';
-import { useState, useEffect } from 'react';
-import { InventoryItem, InventoryRoom } from '../db/models/InventoryItem';
+import { usePolling } from './usePolling';
+import { api } from '../api/client';
+import { toInventoryItem } from '../api/mappers';
+import { InventoryItemObj, InventoryRoom } from '../api/types';
 
-export function useInventoryItems(room: InventoryRoom | null = null) {
-  const database = useDatabase();
-  const [items, setItems] = useState<InventoryItem[]>([]);
-
-  useEffect(() => {
-    const query = room
-      ? database.get<InventoryItem>('inventory_items').query(Q.where('room', room), Q.sortBy('name', Q.asc))
-      : database.get<InventoryItem>('inventory_items').query(Q.sortBy('name', Q.asc));
-
-    const sub = query.observe().subscribe(setItems);
-    return () => sub.unsubscribe();
-  }, [database, room]);
-
+export function useInventoryItems(room: InventoryRoom | null = null): InventoryItemObj[] {
+  const [items] = usePolling(
+    () => {
+      const url = room ? `/inventory?room_id=${encodeURIComponent(room)}` : '/inventory';
+      return api.get<any[]>(url).then((rows) => rows.map(toInventoryItem));
+    },
+    []
+  );
   return items;
 }
