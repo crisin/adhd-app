@@ -1,20 +1,12 @@
-import { useDatabase } from '@nozbe/watermelondb/react';
-import { Q } from '@nozbe/watermelondb';
-import { Goal } from '../db/models/Goal';
-import { useState, useEffect } from 'react';
+import { usePolling } from './usePolling';
+import { api } from '../api/client';
+import { toGoal } from '../api/mappers';
+import { GoalObj } from '../api/types';
 
-export function useGoals() {
-  const database = useDatabase();
-  const [goals, setGoals] = useState<Goal[]>([]);
-
-  useEffect(() => {
-    const sub = database
-      .get<Goal>('goals')
-      .query(Q.where('status', 'active'), Q.sortBy('sort_order', Q.asc))
-      .observe()
-      .subscribe(setGoals);
-    return () => sub.unsubscribe();
-  }, [database]);
-
+export function useGoals(): GoalObj[] {
+  const [goals] = usePolling(
+    () => api.get<any[]>('/goals?status=active').then((rows) => rows.map(toGoal)),
+    []
+  );
   return goals;
 }

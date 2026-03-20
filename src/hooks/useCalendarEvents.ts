@@ -1,31 +1,20 @@
-import { useDatabase } from '@nozbe/watermelondb/react';
-import { Q } from '@nozbe/watermelondb';
-import { useState, useEffect } from 'react';
-import { CalendarEvent } from '../db/models/CalendarEvent';
+import { usePolling } from './usePolling';
+import { api } from '../api/client';
+import { toCalendarEvent } from '../api/mappers';
+import { CalendarEventObj } from '../api/types';
 
-export function useCalendarEvents(startMs: number, endMs: number) {
-  const database = useDatabase();
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-
-  useEffect(() => {
-    const sub = database
-      .get<CalendarEvent>('calendar_events')
-      .query(
-        Q.and(
-          Q.where('start_at', Q.gte(startMs)),
-          Q.where('start_at', Q.lte(endMs))
-        ),
-        Q.sortBy('start_at', Q.asc)
-      )
-      .observe()
-      .subscribe(setEvents);
-    return () => sub.unsubscribe();
-  }, [database, startMs, endMs]);
-
+export function useCalendarEvents(startMs: number, endMs: number): CalendarEventObj[] {
+  const [events] = usePolling(
+    () =>
+      api
+        .get<any[]>(`/calendar?start=${startMs}&end=${endMs}`)
+        .then((rows) => rows.map(toCalendarEvent)),
+    []
+  );
   return events;
 }
 
-export function useCalendarEventsForDay(date: Date) {
+export function useCalendarEventsForDay(date: Date): CalendarEventObj[] {
   const start = new Date(date);
   start.setHours(0, 0, 0, 0);
   const end = new Date(date);

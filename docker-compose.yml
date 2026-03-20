@@ -1,0 +1,56 @@
+services:
+  tadihd-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tadihd
+      POSTGRES_USER: tadihd
+      POSTGRES_PASSWORD: tadihd
+    volumes:
+      - tadihd_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tadihd"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tadihd-internal
+
+  tadihd-backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgres://tadihd:tadihd@tadihd-postgres:5432/tadihd
+      PORT: 3001
+    depends_on:
+      tadihd-postgres:
+        condition: service_healthy
+    networks:
+      - tadihd-internal
+
+  tadihd-app:
+    build: .
+    networks:
+      - tadihd-internal
+
+  tadihd-proxy:
+    build: ./nginx
+    depends_on:
+      - tadihd-app
+      - tadihd-backend
+    networks:
+      - tadihd-internal
+      - weibers-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tadihd.rule=Host(`tadihd.weibers.app`)"
+      - "traefik.http.routers.tadihd.entrypoints=web"
+      - "traefik.http.routers.tadihd.middlewares=authentik-tadihd@docker"
+      - "traefik.http.services.tadihd.loadbalancer.server.port=80"
+      - "traefik.docker.network=weibers-net"
+
+volumes:
+  tadihd_postgres_data:
+
+networks:
+  tadihd-internal:
+  weibers-net:
+    external: true

@@ -1,14 +1,2 @@
-import { Model } from '@nozbe/watermelondb';
-import { text, field, readonly, date } from '@nozbe/watermelondb/decorators';
-
-export class Room extends Model {
-  static table = 'rooms';
-
-  @text('name') name!: string;
-  @text('emoji') emoji!: string | null;
-  @field('color') color!: string | null;
-  @field('sort_order') sortOrder!: number;
-  @readonly @date('created_at') createdAt!: Date;
-  // v6: nested locations
-  @field('parent_id') parentId!: string | null;
-}
+// Stub: re-export types from API layer so existing screen imports keep working.
+export type { RoomObj as Room } from '../../api/types';

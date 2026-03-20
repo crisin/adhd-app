@@ -1,23 +1,12 @@
-import { useDatabase } from '@nozbe/watermelondb/react';
-import { Q } from '@nozbe/watermelondb';
-import { Task } from '../db/models/Task';
-import { useState, useEffect } from 'react';
+import { usePolling } from './usePolling';
+import { api } from '../api/client';
+import { toTask } from '../api/mappers';
+import { TaskObj } from '../api/types';
 
-export function useTodayTasks(): Task[] {
-  const database = useDatabase();
-  const [tasks, setTasks] = useState<Task[]>([]);
-
-  useEffect(() => {
-    const sub = database
-      .get<Task>('tasks')
-      .query(
-        Q.where('status', Q.oneOf(['today', 'active'])),
-        Q.sortBy('sort_order', Q.asc)
-      )
-      .observe()
-      .subscribe(setTasks);
-    return () => sub.unsubscribe();
-  }, [database]);
-
+export function useTodayTasks(): TaskObj[] {
+  const [tasks] = usePolling(
+    () => api.get<any[]>('/tasks?status=today,active').then((rows) => rows.map(toTask)),
+    []
+  );
   return tasks;
 }

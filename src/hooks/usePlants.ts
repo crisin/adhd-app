@@ -1,20 +1,12 @@
-import { useDatabase } from '@nozbe/watermelondb/react';
-import { Q } from '@nozbe/watermelondb';
-import { useState, useEffect } from 'react';
-import { Plant } from '../db/models/Plant';
+import { usePolling } from './usePolling';
+import { api } from '../api/client';
+import { toPlant } from '../api/mappers';
+import { PlantObj } from '../api/types';
 
-export function usePlants() {
-  const database = useDatabase();
-  const [plants, setPlants] = useState<Plant[]>([]);
-
-  useEffect(() => {
-    const sub = database
-      .get<Plant>('plants')
-      .query(Q.sortBy('name', Q.asc))
-      .observe()
-      .subscribe(setPlants);
-    return () => sub.unsubscribe();
-  }, [database]);
-
+export function usePlants(): PlantObj[] {
+  const [plants] = usePolling(
+    () => api.get<any[]>('/plants').then((rows) => rows.map(toPlant)),
+    []
+  );
   return plants;
 }

@@ -1,20 +1,12 @@
-import { useDatabase } from '@nozbe/watermelondb/react';
-import { Q } from '@nozbe/watermelondb';
-import { useState, useEffect } from 'react';
-import { Label } from '../db/models/Label';
+import { usePolling } from './usePolling';
+import { api } from '../api/client';
+import { toLabel } from '../api/mappers';
+import { LabelObj } from '../api/types';
 
-export function useLabels() {
-  const database = useDatabase();
-  const [labels, setLabels] = useState<Label[]>([]);
-
-  useEffect(() => {
-    const sub = database
-      .get<Label>('labels')
-      .query(Q.sortBy('name', Q.asc))
-      .observe()
-      .subscribe(setLabels);
-    return () => sub.unsubscribe();
-  }, [database]);
-
+export function useLabels(): LabelObj[] {
+  const [labels] = usePolling(
+    () => api.get<any[]>('/labels').then((rows) => rows.map(toLabel)),
+    []
+  );
   return labels;
 }

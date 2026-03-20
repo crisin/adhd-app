@@ -1,7 +1,6 @@
-import { useDatabase } from '@nozbe/watermelondb/react';
-import { Q } from '@nozbe/watermelondb';
-import { Task } from '../db/models/Task';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { api } from '../api/client';
+import { toTask } from '../api/mappers';
 
 function startOfDay(d: Date): number {
   const x = new Date(d);
@@ -10,23 +9,19 @@ function startOfDay(d: Date): number {
 }
 
 export function useStreak(): { streak: number; todayCount: number } {
-  const database = useDatabase();
   const [streak, setStreak] = useState(0);
   const [todayCount, setTodayCount] = useState(0);
 
-  useEffect(() => {
-    const sub = database
-      .get<Task>('tasks')
-      .query(Q.where('status', 'done'), Q.sortBy('completed_at', Q.desc))
-      .observe()
-      .subscribe((tasks) => {
+  const compute = useCallback(() => {
+    api
+      .get<any[]>('/tasks?status=done')
+      .then((rows) => rows.map(toTask))
+      .then((tasks) => {
         const todayStart = startOfDay(new Date());
         const done = tasks.filter((t) => t.completedAt != null);
 
-        // Count completed today
         setTodayCount(done.filter((t) => t.completedAt!.getTime() >= todayStart).length);
 
-        // Calculate streak (consecutive days with ≥1 completed task)
         let currentStreak = 0;
         let checkDay = todayStart;
         while (true) {
@@ -39,9 +34,18 @@ export function useStreak(): { streak: number; todayCount: number } {
           checkDay -= 86400000;
         }
         setStreak(currentStreak);
-      });
-    return () => sub.unsubscribe();
-  }, [database]);
+      })
+      .catch(console.error);
+  }, []);
+
+  const computeRef = useRef(compute);
+  computeRef.current = compute;
+
+  useEffect(() => {
+    computeRef.current();
+    const id = setInterval(() => computeRef.current(), 2000);
+    return () => clearInterval(id);
+  }, []);
 
   return { streak, todayCount };
 }
