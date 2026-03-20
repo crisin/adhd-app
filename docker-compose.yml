@@ -16,6 +16,7 @@ services:
       - tadihd-internal
 
   tadihd-backend:
+
     build:
       context: ./backend
       network: host
@@ -32,6 +33,7 @@ services:
     build:
       context: .
       network: host
+
     networks:
       - tadihd-internal
 
