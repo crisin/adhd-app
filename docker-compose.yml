@@ -1,56 +1,56 @@
 services:
-  adhd-postgres:
+  tadihd-postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: adhd
-      POSTGRES_USER: adhd
-      POSTGRES_PASSWORD: adhd
+      POSTGRES_DB: tadihd
+      POSTGRES_USER: tadihd
+      POSTGRES_PASSWORD: tadihd
     volumes:
-      - adhd_postgres_data:/var/lib/postgresql/data
+      - tadihd_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U adhd"]
+      test: ["CMD-SHELL", "pg_isready -U tadihd"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
-      - adhd-internal
+      - tadihd-internal
 
-  adhd-backend:
+  tadihd-backend:
     build: ./backend
     environment:
-      DATABASE_URL: postgres://adhd:adhd@adhd-postgres:5432/adhd
+      DATABASE_URL: postgres://tadihd:tadihd@tadihd-postgres:5432/tadihd
       PORT: 3001
     depends_on:
-      adhd-postgres:
+      tadihd-postgres:
         condition: service_healthy
     networks:
-      - adhd-internal
+      - tadihd-internal
 
-  adhd-app:
+  tadihd-app:
     build: .
     networks:
-      - adhd-internal
+      - tadihd-internal
 
-  adhd-proxy:
+  tadihd-proxy:
     build: ./nginx
     depends_on:
-      - adhd-app
-      - adhd-backend
+      - tadihd-app
+      - tadihd-backend
     networks:
-      - adhd-internal
+      - tadihd-internal
       - weibers-net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.adhd.rule=Host(`adhd.localhost`)"
-      - "traefik.http.routers.adhd.entrypoints=web"
-      - "traefik.http.routers.adhd.middlewares=authentik-adhd@docker"
-      - "traefik.http.services.adhd.loadbalancer.server.port=80"
+      - "traefik.http.routers.tadihd.rule=Host(`tadihd.weibers.app`)"
+      - "traefik.http.routers.tadihd.entrypoints=web"
+      - "traefik.http.routers.tadihd.middlewares=authentik-tadihd@docker"
+      - "traefik.http.services.tadihd.loadbalancer.server.port=80"
       - "traefik.docker.network=weibers-net"
 
 volumes:
-  adhd_postgres_data:
+  tadihd_postgres_data:
 
 networks:
-  adhd-internal:
+  tadihd-internal:
   weibers-net:
     external: true

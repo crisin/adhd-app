@@ -8,21 +8,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build web export
-        run: npx expo export --platform web
-
       - name: Install cloudflared
         run: |
           curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
@@ -37,14 +22,21 @@ jobs:
           chmod 600 "$HOME/.ssh/id_ed25519"
           printf 'Host weiber.tunnel\n  HostName ssh.rousseau-lab.de\n  User weiber\n  IdentityFile %s/.ssh/id_ed25519\n  ProxyCommand cloudflared access ssh --hostname %%h\n  StrictHostKeyChecking no\n' "$HOME" > "$HOME/.ssh/config"
           chmod 600 "$HOME/.ssh/config"
-          echo "--- SSH config ---"
-          cat "$HOME/.ssh/config"
-          echo "--- SSH key check ---"
-          ls -la "$HOME/.ssh/"
 
-      - name: Deploy via SSH
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync files to server
         run: |
           rsync -avz --delete \
             -e "ssh -F $HOME/.ssh/config" \
-            dist/ \
+            ./ \
             weiber.tunnel:~/adhd-app/
+
+      - name: Deploy via SSH
+        run: |
+          ssh weiber.tunnel "
+            set -e
+            cd ~/adhd-app
+            docker compose up --build -d
+          "
