@@ -16,7 +16,9 @@ services:
       - tadihd-internal
 
   tadihd-backend:
-    build: ./backend
+    build:
+      context: ./backend
+      network: host
     environment:
       DATABASE_URL: postgres://tadihd:tadihd@tadihd-postgres:5432/tadihd
       PORT: 3001
@@ -27,12 +29,16 @@ services:
       - tadihd-internal
 
   tadihd-app:
-    build: .
+    build:
+      context: .
+      network: host
     networks:
       - tadihd-internal
 
   tadihd-proxy:
-    build: ./nginx
+    build:
+      context: ./nginx
+      network: host
     depends_on:
       - tadihd-app
       - tadihd-backend
